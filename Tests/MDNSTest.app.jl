@@ -88,16 +88,14 @@ function browse_callback(b::Ptr{Cvoid}, interface::Int32, protocol::Int32, event
         return
     elseif event == AVAHI_BROWSER_NEW
         println(stderr, "(Browser) NEW: service '", name, "' of type '", type, "' in domain '", domain, "'")
-        resolver = avahi_service_resolver_new(c, interface, protocol, name, type, domain, AVAHI_PROTO_UNSPEC, Int32(0), c_resolve_callback, c)
-        if resolver == C_NULL
-            error_str = avahi_strerror(avahi_client_errno(c))
-            println(stderr, "1. Failed to resolve service '", name, "': ", unsafe_string(error_str))
+        if name[1] != '_'  # Skip meta-browse entries
+            resolver = avahi_service_resolver_new(c, interface, protocol, name, type, domain, AVAHI_PROTO_UNSPEC, Int32(0), c_resolve_callback, c)
+            if resolver == C_NULL
+                error_str = avahi_strerror(avahi_client_errno(c))
+                println(stderr, "Failed to resolve service '", name, "': ", unsafe_string(error_str))
+            end
         end
-        # resolver = avahi_service_resolver_new(c, interface, protocol, C_NULL, "$(name).$(type)", domain, AVAHI_PROTO_UNSPEC, Int32(0), c_resolve_callback, c)
-        # if resolver == C_NULL
-        #     error_str = avahi_strerror(avahi_client_errno(c))
-        #     println(stderr, "2. Failed to resolve service '", "$(name).$(type)", "': ", unsafe_string(error_str))
-        # end
+        # TODO If doing a meta browse, create a new service browser here
     elseif event == AVAHI_BROWSER_REMOVE
         println(stderr, "(Browser) REMOVE: service '", name, "' of type '", type, "' in domain '", domain, "'")
     elseif event == AVAHI_BROWSER_ALL_FOR_NOW || event == AVAHI_BROWSER_CACHE_EXHAUSTED
