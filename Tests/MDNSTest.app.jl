@@ -121,7 +121,7 @@ end
 function main(args::Vector{String})
     if length(args) < 1
         println("Usage: julia ", PROGRAM_FILE, " <service_type>")
-        println("Example: julia ", PROGRAM_FILE, " _http._tcp")
+        println("Example: julia ", PROGRAM_FILE, " _services._dns-sd._udp")
         return 1
     end
 
