@@ -96,7 +96,7 @@ function find_serial_port(vid::UInt16, pid::UInt16)
     return nothing
 end
 
-init()
+HidApi.init()
 
 @info "HID Devices:"
 devices = enumerate_devices()
@@ -115,12 +115,15 @@ println("Response: ", response[23:26])
 
 @info "Getting GPIO values..."
 for _ in 1:10
-    response = get_gpio_values(stream)
+    local response = get_gpio_values(stream)
     println("Response: ", response[3:10])
     @assert response[STATUS_INDEX] == STATUS_OK
     sleep(0.5)
 end
 close(stream)
+
+HidApi.shutdown()
+
 
 @info "Read depth..."
 port = find_serial_port(UInt16(VENDOR_ID), UInt16(PRODUCT_ID))
@@ -147,4 +150,6 @@ LibSerialPort.open(port, ULTRASONIC_BAUDRATE) do sp
     end
 end
 
-shutdown()
+# TODO - Control relays via GPIO outputs
+
+# TODO - Read temp over I2C
