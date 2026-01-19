@@ -9,11 +9,12 @@ const GET_GPIO_VALUES = 0x51
 const SET_SRAM_SETTINGS = 0x60
 const GET_SRAM_SETTINGS = 0x61
 const RESET_CHIP = 0x70
+
+const STATUS_OK = 0x00
 const SET_GPIO_AS_OUTPUT = 0x00
 const SET_GPIO_AS_INPUT = 0x01
-const STATUS_OK = 0x00
-const DONT_ENABLE_ALTER = 0x00
-const ENABLE_ALTER = 0x80
+const ENABLE_ALTER_TRUE = 0x80
+const ENABLE_ALTER_FALSE = 0x00
 const SRAM_GP_AS_INPUT = 0x08
 const SRAM_GP_AS_OUTPUT = 0x00
 
@@ -55,7 +56,7 @@ end
 function enable_gpio(stream)
     buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
     buf[COMMAND_CODE_INDEX] = SET_SRAM_SETTINGS
-    buf[SRAM_GPIO_CONFIG_INDEX] = ENABLE_ALTER
+    buf[SRAM_GPIO_CONFIG_INDEX] = ENABLE_ALTER_TRUE
     buf[SRAM_GP0_SETTING_INDEX] = SRAM_GP_AS_INPUT
     buf[SRAM_GP1_SETTING_INDEX] = SRAM_GP_AS_OUTPUT
     buf[SRAM_GP2_SETTING_INDEX] = SRAM_GP_AS_OUTPUT
@@ -72,16 +73,6 @@ function get_gpio_values(stream)
     data = read(stream, MCP2221A_PACKET_SIZE)
     return data
 end
-
-# function config_gp0_as_input(stream)
-#     buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
-#     buf[COMMAND_CODE_INDEX] = SET_GPIO_VALUES
-#     buf[GP0_ENABLE_DISABLE_PIN_DIRECTION_INDEX] = ENABLE_ALTER
-#     buf[GP0_PIN_DIRECTION_INDEX] = SET_GPIO_AS_INPUT
-#     write(stream, buf)
-#     data = read(stream, MCP2221A_PACKET_SIZE)
-#     return data
-# end
 
 function get_sram_settings(stream)
     buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
@@ -102,10 +93,6 @@ stream = open(device)
 response = enable_gpio(stream)
 println("Response: ", response)
 @assert response[STATUS_INDEX] == STATUS_OK
-
-# response = config_gp0_as_input(stream)
-# println("Response: ", response)
-# @assert response[STATUS_INDEX] == STATUS_OK
 
 @info "Getting SRAM GPIO settings..."
 response = get_sram_settings(stream)
