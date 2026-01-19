@@ -3,6 +3,7 @@ using HidApi, LibSerialPort
 const VENDOR_ID = 0x04d8
 const PRODUCT_ID = 0x00dd
 const MCP2221A_PACKET_SIZE = 64
+const ULTRASONIC_BAUDRATE = 9600
 
 const SET_GPIO_VALUES = 0x50
 const GET_GPIO_VALUES = 0x51
@@ -27,6 +28,8 @@ const SRAM_GP0_SETTING_INDEX = 9
 const SRAM_GP1_SETTING_INDEX = 10
 const SRAM_GP2_SETTING_INDEX = 11
 const SRAM_GP3_SETTING_INDEX = 12
+
+const ULTRASONIC_START_BYTE = 0xFF
 
 function vid_pid(port::String)
     sp = SerialPort(port)
@@ -82,6 +85,17 @@ function get_sram_settings(stream)
     return data
 end
 
+function find_serial_port(vid::UInt16, pid::UInt16)
+    ports = get_port_list()
+    for port in ports
+        v, p = vid_pid(port)
+        if v == vid && p == pid
+            return port
+        end
+    end
+    return nothing
+end
+
 init()
 
 @info "HID Devices:"
@@ -100,13 +114,37 @@ println("Response: ", response[23:26])
 @assert response[STATUS_INDEX] == STATUS_OK
 
 @info "Getting GPIO values..."
-response = get_gpio_values(stream)
-println("Response: ", response[3:10])
-@assert response[STATUS_INDEX] == STATUS_OK
-
-ports = get_port_list()
-@info "Serial Vid/Pid scan:" [p => vid_pid(p) for p in ports]
-
+for _ in 1:10
+    response = get_gpio_values(stream)
+    println("Response: ", response[3:10])
+    @assert response[STATUS_INDEX] == STATUS_OK
+    sleep(0.5)
+end
 close(stream)
+
+@info "Read depth..."
+port = find_serial_port(UInt16(VENDOR_ID), UInt16(PRODUCT_ID))
+@info "Found port: $port"
+
+LibSerialPort.open(port, ULTRASONIC_BAUDRATE) do sp    
+    for _ in 1:10
+        if read(sp, UInt8) == ULTRASONIC_START_BYTE
+            packet = read(sp, 3)            
+            if length(packet) == 3
+                data_high = packet[1]
+                data_low = packet[2]
+                checksum_received = packet[3]
+                calc_sum = (ULTRASONIC_START_BYTE + data_high + data_low) & 0xFF
+                if calc_sum == checksum_received
+                    distance = (Int(data_high) << 8) + data_low
+                    println("Distance: $(distance) mm")
+                else
+                    @warn "Checksum mismatch!"
+                end
+            end
+        end
+        sleep(0.1) # Small delay
+    end
+end
 
 shutdown()
