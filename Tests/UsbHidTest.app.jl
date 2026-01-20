@@ -51,13 +51,17 @@ function vid_pid(port::String)
     return (vid, pid)
 end
 
-function write_packet(stream, command, data::Vector{UInt8} = UInt8[], data_start_index = 2)
+function write_packet(stream, command, data_start_index = 2, data::Vector{UInt8} = UInt8[])
     @assert data_start_index >= 2
     @assert data_start_index + length(data) - 1 <= MCP2221A_PACKET_SIZE
     buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
     buf[COMMAND_CODE_INDEX] = command
     copy!(buf, data_start_index, data, 1, length(data))
     write(stream, buf)
+end
+
+function write_packet(stream, command, data::Vector{UInt8})  
+    write_packet(stream, command, 2, data)
 end
 
 function reset_chip(stream)
@@ -80,12 +84,12 @@ function enable_gpio(stream)
     # buf[SRAM_GP2_SETTING_INDEX] = SRAM_GP_AS_OUTPUT
     # buf[SRAM_GP3_SETTING_INDEX] = SRAM_GP_AS_OUTPUT
     # write(stream, buf)
-    write_packet(stream, SET_SRAM_SETTINGS, [
+    write_packet(stream, SET_SRAM_SETTINGS, SRAM_GPIO_CONFIG_INDEX, [
         ENABLE_ALTER_TRUE, 
         SRAM_GP_AS_INPUT, 
         SRAM_GP_AS_OUTPUT, 
         SRAM_GP_AS_OUTPUT, 
-        SRAM_GP_AS_OUTPUT], SRAM_GPIO_CONFIG_INDEX)
+        SRAM_GP_AS_OUTPUT])
     data = read(stream, MCP2221A_PACKET_SIZE)
     return data
 end
@@ -125,7 +129,7 @@ function set_gpio_1(stream, gp1::Bool)
     # buf[GP1_ALTER_OUTPUT_VALUE_INDEX] = ENABLE_ALTER_TRUE
     # buf[GP1_OUTPUT_VALUE_INDEX] = gp1 ? 0x01 : 0x00
     # write(stream, buf)
-    write_packet(stream, SET_GPIO_VALUES, [ENABLE_ALTER_TRUE, gp1 ? 0x01 : 0x00], GP1_ALTER_OUTPUT_VALUE_INDEX)
+    write_packet(stream, SET_GPIO_VALUES, GP1_ALTER_OUTPUT_VALUE_INDEX, [ENABLE_ALTER_TRUE, gp1 ? 0x01 : 0x00])
     data = read(stream, MCP2221A_PACKET_SIZE)
     return data
 end
