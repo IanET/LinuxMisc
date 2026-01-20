@@ -21,18 +21,18 @@ const SRAM_GP_AS_OUTPUT = 0x00
 
 const COMMAND_CODE_INDEX = 1
 const STATUS_INDEX = 2
-const GP0_ENABLE_DISABLE_PIN_DIRECTION_INDEX = 5
-const GP0_PIN_DIRECTION_INDEX = 6
+# const GP0_ENABLE_DISABLE_PIN_DIRECTION_INDEX = 5
+# const GP0_PIN_DIRECTION_INDEX = 6
 const SRAM_GPIO_CONFIG_INDEX = 8
-const SRAM_GP0_SETTING_INDEX = 9
-const SRAM_GP1_SETTING_INDEX = 10
-const SRAM_GP2_SETTING_INDEX = 11
-const SRAM_GP3_SETTING_INDEX = 12
+# const SRAM_GP0_SETTING_INDEX = 9
+# const SRAM_GP1_SETTING_INDEX = 10
+# const SRAM_GP2_SETTING_INDEX = 11
+# const SRAM_GP3_SETTING_INDEX = 12
 
 const ULTRASONIC_START_BYTE = 0xFF
 
 const GP1_ALTER_OUTPUT_VALUE_INDEX = 7
-const GP1_OUTPUT_VALUE_INDEX = 8
+# const GP1_OUTPUT_VALUE_INDEX = 8
 
 const I2C_SLEEP_TIME = 0.2
 
@@ -51,41 +51,59 @@ function vid_pid(port::String)
     return (vid, pid)
 end
 
-function reset_chip(stream)
+function write_packet(stream, command, data::Vector{UInt8} = UInt8[], data_start_index = 2)
+    @assert data_start_index >= 2
+    @assert data_start_index + length(data) - 1 <= MCP2221A_PACKET_SIZE
     buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
-    buf[COMMAND_CODE_INDEX] = RESET_CHIP
-    buf[2] = 0xAB
-    buf[3] = 0xCD
-    buf[4] = 0xEF
+    buf[COMMAND_CODE_INDEX] = command
+    copy!(buf, data_start_index, data, 1, length(data))
     write(stream, buf)
+end
+
+function reset_chip(stream)
+    # buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    # buf[COMMAND_CODE_INDEX] = RESET_CHIP
+    # buf[2] = 0xAB
+    # buf[3] = 0xCD
+    # buf[4] = 0xEF
+    # write(stream, buf)
+    write_packet(stream, RESET_CHIP, [0xAB, 0xCD, 0xEF])
     # No response for this command
 end
 
 function enable_gpio(stream)
-    buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
-    buf[COMMAND_CODE_INDEX] = SET_SRAM_SETTINGS
-    buf[SRAM_GPIO_CONFIG_INDEX] = ENABLE_ALTER_TRUE
-    buf[SRAM_GP0_SETTING_INDEX] = SRAM_GP_AS_INPUT
-    buf[SRAM_GP1_SETTING_INDEX] = SRAM_GP_AS_OUTPUT
-    buf[SRAM_GP2_SETTING_INDEX] = SRAM_GP_AS_OUTPUT
-    buf[SRAM_GP3_SETTING_INDEX] = SRAM_GP_AS_OUTPUT
-    write(stream, buf)
+    # buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    # buf[COMMAND_CODE_INDEX] = SET_SRAM_SETTINGS
+    # buf[SRAM_GPIO_CONFIG_INDEX] = ENABLE_ALTER_TRUE
+    # buf[SRAM_GP0_SETTING_INDEX] = SRAM_GP_AS_INPUT
+    # buf[SRAM_GP1_SETTING_INDEX] = SRAM_GP_AS_OUTPUT
+    # buf[SRAM_GP2_SETTING_INDEX] = SRAM_GP_AS_OUTPUT
+    # buf[SRAM_GP3_SETTING_INDEX] = SRAM_GP_AS_OUTPUT
+    # write(stream, buf)
+    write_packet(stream, SET_SRAM_SETTINGS, [
+        ENABLE_ALTER_TRUE, 
+        SRAM_GP_AS_INPUT, 
+        SRAM_GP_AS_OUTPUT, 
+        SRAM_GP_AS_OUTPUT, 
+        SRAM_GP_AS_OUTPUT], SRAM_GPIO_CONFIG_INDEX)
     data = read(stream, MCP2221A_PACKET_SIZE)
     return data
 end
 
 function get_gpio_values(stream)
-    buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
-    buf[COMMAND_CODE_INDEX] = GET_GPIO_VALUES
-    write(stream, buf)
+    # buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    # buf[COMMAND_CODE_INDEX] = GET_GPIO_VALUES
+    # write(stream, buf)
+    write_packet(stream, GET_GPIO_VALUES)
     data = read(stream, MCP2221A_PACKET_SIZE)
     return data
 end
 
 function get_sram_settings(stream)
-    buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
-    buf[COMMAND_CODE_INDEX] = GET_SRAM_SETTINGS
-    write(stream, buf)
+    # buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    # buf[COMMAND_CODE_INDEX] = GET_SRAM_SETTINGS
+    # write(stream, buf)
+    write_packet(stream, GET_SRAM_SETTINGS)
     data = read(stream, MCP2221A_PACKET_SIZE)
     return data
 end
@@ -102,11 +120,12 @@ function find_serial_port(vid::UInt16, pid::UInt16)
 end
 
 function set_gpio_1(stream, gp1::Bool)
-    buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
-    buf[COMMAND_CODE_INDEX] = SET_GPIO_VALUES
-    buf[GP1_ALTER_OUTPUT_VALUE_INDEX] = ENABLE_ALTER_TRUE
-    buf[GP1_OUTPUT_VALUE_INDEX] = gp1 ? 0x01 : 0x00
-    write(stream, buf)
+    # buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    # buf[COMMAND_CODE_INDEX] = SET_GPIO_VALUES
+    # buf[GP1_ALTER_OUTPUT_VALUE_INDEX] = ENABLE_ALTER_TRUE
+    # buf[GP1_OUTPUT_VALUE_INDEX] = gp1 ? 0x01 : 0x00
+    # write(stream, buf)
+    write_packet(stream, SET_GPIO_VALUES, [ENABLE_ALTER_TRUE, gp1 ? 0x01 : 0x00], GP1_ALTER_OUTPUT_VALUE_INDEX)
     data = read(stream, MCP2221A_PACKET_SIZE)
     return data
 end
@@ -124,19 +143,24 @@ const 1WIRE_RESET_COMMAND = 0xB4
 const 1WIRE_READ_ROM_COMMAND = 0x33
 const 1WIRE_READ_BYTE = 0x96
 
-function request_i2c_read(stream, addr, bytes_to_read::UInt16)
-    buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
-    buf[COMMAND_CODE_INDEX] = I2C_READ_COMMAND
-    buf[2] = bytes_to_read % 256
-    buf[3] = bytes_to_read ÷ 256
-    buf[4] = (addr << 1) | 0x01 # 7-bit address + Read bit (1)
-    write(stream, buf)
+function i2c_request_read(stream, addr, bytes_to_read::UInt16)
+    # buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    # buf[COMMAND_CODE_INDEX] = I2C_READ_COMMAND
+    # buf[2] = bytes_to_read % 256
+    # buf[3] = bytes_to_read ÷ 256
+    # buf[4] = (addr << 1) | 0x01 # 7-bit address + Read bit (1)
+    # write(stream, buf)
+    write_packet(stream, I2C_READ_COMMAND, [
+        UInt8(bytes_to_read % 256),
+        UInt8(bytes_to_read ÷ 256),
+        UInt8((addr << 1) | 0x01)])
 end
 
 function i2c_read_data(stream)
-    buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
-    buf[COMMAND_CODE_INDEX] = I2C_READ_DATA_COMMAND 
-    write(stream, buf)
+    # buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    # buf[COMMAND_CODE_INDEX] = I2C_READ_DATA_COMMAND 
+    # write(stream, buf)
+    write_packet(stream, I2C_READ_DATA_COMMAND)
     sleep(I2C_SLEEP_TIME) # Wait for data to be ready
     # Read the response (64 bytes)
     response = zeros(UInt8, MCP2221A_PACKET_SIZE)
@@ -155,34 +179,40 @@ function i2c_write_data(stream, addr, data::Vector{UInt8})
     buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
     buf[COMMAND_CODE_INDEX] = I2C_WRITE_COMMAND
     buf[2] = length(data) + 1 # Number of bytes to write (data + command)
-    buf[3] = 0
     buf[4] = (addr << 1) | 0x00 # 7-bit address + Write bit (0)
     buf[5] = data[1] # First byte is the command
     copy!(buf, 6, data, 2, length(data) - 1)
     write(stream, buf)
 end
 
-function ds2484_1wire_reset(stream)
-    i2c_write_data(stream, DS2484_I2C_ADDRESS, [1WIRE_RESET_COMMAND])
-end
-
+ds2484_1wire_reset(stream) = i2c_write_data(stream, DS2484_I2C_ADDRESS, [1WIRE_RESET_COMMAND])
 ds2484_write_byte(stream, byte::UInt8) = i2c_write_data(stream, DS2484_I2C_ADDRESS, [DS2484_WRITE_BYTE, byte])
 
 function ds2484_read_byte(stream)
     i2c_write_data(stream, DS2484_I2C_ADDRESS, [1WIRE_READ_BYTE])
     sleep(I2C_SLEEP_TIME)
-    request_i2c_read(stream, DS2484_I2C_ADDRESS, 1)
+    response = i2c_request_and_read(stream, DS2484_I2C_ADDRESS, 1)
+    # i2c_request_read(stream, DS2484_I2C_ADDRESS, 1)
+    # sleep(I2C_SLEEP_TIME)
+    # response = i2c_read_data(stream)
+    return response[1]
+end
+
+function i2c_request_and_read(stream, addr, bytes_to_read::UInt16)
+    i2c_request_read(stream, addr, bytes_to_read)
     sleep(I2C_SLEEP_TIME)
     response = i2c_read_data(stream)
-    return response[1]
+    sleep(I2C_SLEEP_TIME)
+    return response
 end
 
 function get_temp_sensor_addr(stream)
     ds2484_1wire_reset(stream)
     sleep(I2C_SLEEP_TIME)
-    request_i2c_read(stream, DS2484_I2C_ADDRESS, 1)
-    sleep(I2C_SLEEP_TIME)
-    response = i2c_read_data(stream)
+    response = i2c_request_and_read(stream, DS2484_I2C_ADDRESS, 1)
+    # i2c_request_read(stream, DS2484_I2C_ADDRESS, 1)
+    # sleep(I2C_SLEEP_TIME)
+    # response = i2c_read_data(stream)
     @info "1-Wire Reset Response: $response"
     ds2484_write_byte(stream, 1WIRE_READ_ROM_COMMAND)
     sleep(I2C_SLEEP_TIME)
