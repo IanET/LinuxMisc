@@ -31,6 +31,11 @@ const SRAM_GP3_SETTING_INDEX = 12
 
 const ULTRASONIC_START_BYTE = 0xFF
 
+const GP1_ALTER_OUTPUT_VALUE_INDEX = 7
+const GP1_OUTPUT_VALUE_INDEX = 8
+
+const I2C_SLEEP_TIME = 0.2
+
 function vid_pid(port::String)
     sp = SerialPort(port)
     vid = pid = 0x0000
@@ -96,6 +101,104 @@ function find_serial_port(vid::UInt16, pid::UInt16)
     return nothing
 end
 
+function set_gpio_1(stream, gp1::Bool)
+    buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    buf[COMMAND_CODE_INDEX] = SET_GPIO_VALUES
+    buf[GP1_ALTER_OUTPUT_VALUE_INDEX] = ENABLE_ALTER_TRUE
+    buf[GP1_OUTPUT_VALUE_INDEX] = gp1 ? 0x01 : 0x00
+    write(stream, buf)
+    data = read(stream, MCP2221A_PACKET_SIZE)
+    return data
+end
+
+const DS2484_I2C_ADDRESS = 0x18
+# const DS2484_I2C_ADDRESS_READ = (DS2484_I2C_ADDRESS << 1) | 0x01
+# const DS2484_I2C_ADDRESS_WRITE = (DS2484_I2C_ADDRESS << 1) | 0x00
+const DS2484_WRITE_BYTE = 0xA5
+
+const I2C_WRITE_COMMAND = 0x90
+const I2C_READ_COMMAND = 0x91
+const I2C_READ_DATA_COMMAND = 0x40
+
+const 1WIRE_RESET_COMMAND = 0xB4
+const 1WIRE_READ_ROM_COMMAND = 0x33
+const 1WIRE_READ_BYTE = 0x96
+
+function request_i2c_read(stream, addr, bytes_to_read::UInt16)
+    buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    buf[COMMAND_CODE_INDEX] = I2C_READ_COMMAND
+    buf[2] = bytes_to_read % 256
+    buf[3] = bytes_to_read ÷ 256
+    buf[4] = (addr << 1) | 0x01 # 7-bit address + Read bit (1)
+    write(stream, buf)
+end
+
+function i2c_read_data(stream)
+    buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    buf[COMMAND_CODE_INDEX] = I2C_READ_DATA_COMMAND 
+    write(stream, buf)
+    sleep(I2C_SLEEP_TIME) # Wait for data to be ready
+    # Read the response (64 bytes)
+    response = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    read(stream, response)
+    @assert response[2] == 0x00 # Status OK
+
+    # Byte 2 is the status (0x00 is success)
+    # Byte 3 is the internal buffer length
+    # Bytes 4 and onwards contain the actual data
+
+    data_end = response[3] + 3
+    return response[4:data_end]
+end
+
+function i2c_write_data(stream, addr, data::Vector{UInt8})
+    buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    buf[COMMAND_CODE_INDEX] = I2C_WRITE_COMMAND
+    buf[2] = length(data) + 1 # Number of bytes to write (data + command)
+    buf[3] = 0
+    buf[4] = (addr << 1) | 0x00 # 7-bit address + Write bit (0)
+    buf[5] = data[1] # First byte is the command
+    copy!(buf, 6, data, 2, length(data) - 1)
+    write(stream, buf)
+end
+
+function ds2484_1wire_reset(stream)
+    i2c_write_data(stream, DS2484_I2C_ADDRESS, [1WIRE_RESET_COMMAND])
+end
+
+ds2484_write_byte(stream, byte::UInt8) = i2c_write_data(stream, DS2484_I2C_ADDRESS, [DS2484_WRITE_BYTE, byte])
+
+function ds2484_read_byte(stream)
+    i2c_write_data(stream, DS2484_I2C_ADDRESS, [1WIRE_READ_BYTE])
+    sleep(I2C_SLEEP_TIME)
+    request_i2c_read(stream, DS2484_I2C_ADDRESS, 1)
+    sleep(I2C_SLEEP_TIME)
+    response = i2c_read_data(stream)
+    return response[1]
+end
+
+function get_temp_sensor_addr(stream)
+    ds2484_1wire_reset(stream)
+    sleep(I2C_SLEEP_TIME)
+    request_i2c_read(stream, DS2484_I2C_ADDRESS, 1)
+    sleep(I2C_SLEEP_TIME)
+    response = i2c_read_data(stream)
+    @info "1-Wire Reset Response: $response"
+    ds2484_write_byte(stream, 1WIRE_READ_ROM_COMMAND)
+    sleep(I2C_SLEEP_TIME)
+
+    rom_code = zeros(UInt8, 8)
+    for i in 1:8
+        byte = ds2484_read_byte(stream)
+        @info "1-Wire Read Byte $i: $(hex(byte))"
+        rom_code[i] = byte
+    end
+
+    return rom_code
+end
+
+# Read GPIO inputs via HID
+
 HidApi.init()
 
 @info "HID Devices:"
@@ -120,17 +223,16 @@ for _ in 1:10
     @assert response[STATUS_INDEX] == STATUS_OK
     sleep(0.5)
 end
-close(stream)
 
-HidApi.shutdown()
 
+# Read ultrasonic sensor over serial port
 
 @info "Read depth..."
 port = find_serial_port(UInt16(VENDOR_ID), UInt16(PRODUCT_ID))
 @info "Found port: $port"
 
 LibSerialPort.open(port, ULTRASONIC_BAUDRATE) do sp    
-    for _ in 1:10
+    for _ in 1:100
         if read(sp, UInt8) == ULTRASONIC_START_BYTE
             packet = read(sp, 3)            
             if length(packet) == 3
@@ -146,10 +248,25 @@ LibSerialPort.open(port, ULTRASONIC_BAUDRATE) do sp
                 end
             end
         end
-        sleep(0.1) # Small delay
+        sleep(0) 
     end
 end
 
 # TODO - Control relays via GPIO outputs
+@info "Relay ON/OFF..."
+response = set_gpio_1(stream, true)
+@info "Response: $(response[3:10])"
+sleep(2)
+response = set_gpio_1(stream, false)
+@info "Response: $(response[3:10])"
 
 # TODO - Read temp over I2C
+@info "Read temperature over I2C..."
+
+rom_code = get_temp_sensor_addr(stream)
+@info "1-Wire ROM Code: $(join(map(x -> hex(x), rom_code), ", "))"
+
+# Cleanup HID
+
+close(stream)
+HidApi.shutdown()
