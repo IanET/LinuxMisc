@@ -23,6 +23,13 @@ b2 = expand_button("Two")
 b3 = expand_button("Three")
 b4 = expand_button("Four")
 
+lp = GtkGestureLongPress()
+push!(b4, lp)
+signal_connect(lp, "pressed") do gesture, x, y
+    @info "Long press detected at coordinates: $x, $y"
+    Gtk4.G_.set_state(gesture, Gtk4.EventSequenceState_CLAIMED)
+end
+
 grid[1,1] = b1
 grid[2,1] = b2
 grid[1,2] = b3
