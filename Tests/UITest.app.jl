@@ -4,9 +4,10 @@ win = GtkWindow("UITest", 800, 600)
 grid = GtkGrid()
 push!(win,grid)
 
-function big_label_expanded(text)
+function big_label_expanded(text, sub)
     lbl = GtkLabel(text)
-    Gtk4.markup(lbl, "<span size='61440'>$(text)</span>")
+    Gtk4.markup(lbl, "<span size='61440'>$(text)</span>\n<span size='32768'>$(sub)</span>")
+    set_gtk_property!(lbl, :justify, Gtk4.Justification_CENTER)
     lbl.hexpand = true
     lbl.vexpand = true
     return lbl
@@ -27,12 +28,12 @@ function big_button(text)
     return btn
 end
 
-l1 = big_label_expanded("One")
-l2 = big_label_expanded("Two")
-l3 = big_label_expanded("Three")
-b1 = big_button("Four")
-b2 = big_button("Five")
-b3 = big_button("Six")
+l1 = big_label_expanded("80", "°C")
+l2 = big_label_expanded("4.1", "gal")
+l3 = big_label_expanded("45", "ABV")
+b1 = big_button("Start")
+b2 = big_button("Stop")
+b3 = big_button("Reset")
 
 # gesture = GtkGestureClick()
 # push!(b4, gesture)
