@@ -2,12 +2,12 @@ using Gtk4
 
 css = """
 window, .background {
-    background-color: black;
+    background-color: #2c3e50;
     color: white;
 }
 label {
     color: white;
-    font-size: 48px;
+    font-size: 32px;
 }
 button {
     background-color: #333333; /* Dark Gray */
@@ -19,6 +19,10 @@ button {
 }
 button:active {
     background-color: #444444;
+}
+window.dialog {
+    background-color: #502C2C;
+    color: white; /* Ensures text is readable on dark background */
 }
 """
 
@@ -66,6 +70,12 @@ l3 = big_label_expanded("45", "ABV")
 b1 = big_button("Log")
 b2 = big_button("Pause")
 b3 = big_button("Delete")
+
+signal_connect(b3, "clicked") do btn
+    ask_dialog("\nAre you sure you want to proceed?\n", win; no_text="No", yes_text="Yes") do x
+        @info "User clicked $x"
+    end
+end
 
 Gtk4.G_.attach(grid, title, 0, 0, 3, 1)
 grid[1,2] = l1
