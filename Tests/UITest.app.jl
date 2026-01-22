@@ -1,6 +1,32 @@
 using Gtk4
 
+css = """
+window, .background {
+    background-color: black;
+    color: white;
+}
+label {
+    color: white;
+    font-size: 48px;
+}
+button {
+    background-color: #333333; /* Dark Gray */
+    background-image: none;    /* REQUIRED: Removes the default gradient */
+    color: white;              /* Text color */
+    border-image: none;        /* Removes theme-specific border styling */
+    border: 1px solid #555;    /* Gives it a visible edge */
+    box-shadow: none;          /* Removes default glow/shadow */
+}
+button:active {
+    background-color: #444444;
+}
+"""
+
+provider = Gtk4.GtkCssProvider(css)
 win = GtkWindow("UITest", 800, 600)
+display = Gtk4.display(win)
+push!(display, provider, Gtk4.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
 fullscreen(win)
 grid = GtkGrid()
 grid.column_homogeneous = true
@@ -8,7 +34,7 @@ push!(win,grid)
 
 function big_label_expanded(text, sub)
     lbl = GtkLabel(text)
-    Gtk4.markup(lbl, "<span size='61440'>$(text)</span>\n<span size='32768'>$(sub)</span>")
+    Gtk4.markup(lbl, "<span size='81920'>$(text)</span>\n<span size='20480'>$(sub)</span>")
     set_gtk_property!(lbl, :justify, Gtk4.Justification_CENTER)
     lbl.hexpand = true
     lbl.vexpand = true
@@ -17,7 +43,7 @@ end
 
 function big_label(text)
     lbl = GtkLabel(text)
-    Gtk4.markup(lbl, "<span size='51200'>$(text)</span>")
+    Gtk4.markup(lbl, "<span>$(text)</span>")
     return lbl
 end 
 
