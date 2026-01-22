@@ -1,7 +1,9 @@
 using Gtk4
 
 win = GtkWindow("UITest", 800, 600)
+fullscreen(win)
 grid = GtkGrid()
+grid.column_homogeneous = true
 push!(win,grid)
 
 function big_label_expanded(text, sub)
@@ -15,7 +17,7 @@ end
 
 function big_label(text)
     lbl = GtkLabel(text)
-    Gtk4.markup(lbl, "<span size='61440'>$(text)</span>")
+    Gtk4.markup(lbl, "<span size='51200'>$(text)</span>")
     return lbl
 end 
 
@@ -25,35 +27,27 @@ function big_button(text)
     signal_connect(btn, "clicked") do btn
         @info "Button '$text' clicked"
     end
+    btn.hexpand = true
     return btn
 end
 
+title = GtkLabel("")
+Gtk4.markup(title, "<span size='32768' weight='bold'>UITest Application</span>")
+
 l1 = big_label_expanded("80", "°C")
-l2 = big_label_expanded("4.1", "gal")
+l2 = big_label_expanded("4.1", "Gal")
 l3 = big_label_expanded("45", "ABV")
-b1 = big_button("Start")
-b2 = big_button("Stop")
-b3 = big_button("Reset")
+b1 = big_button("Log")
+b2 = big_button("Pause")
+b3 = big_button("Delete")
 
-# gesture = GtkGestureClick()
-# push!(b4, gesture)
-# signal_connect(gesture, "pressed") do g, n_press, x, y
-#     Gtk4.G_.set_state(gesture, Gtk4.EventSequenceState_CLAIMED)
-#     @info "Button Pressed"
-# end
-
-# signal_connect(gesture, "released") do g, n_press, x, y
-#     Gtk4.G_.set_state(gesture, Gtk4.EventSequenceState_CLAIMED)
-#     # w = Gtk4.widget(g)
-#     @info "Button Released"
-# end
-
-grid[1,1] = l1
-grid[2,1] = l2
-grid[3,1] = l3
-grid[1,2] = b1
-grid[2,2] = b2
-grid[3,2] = b3
+Gtk4.G_.attach(grid, title, 0, 0, 3, 1)
+grid[1,2] = l1
+grid[2,2] = l2
+grid[3,2] = l3
+grid[1,3] = b1
+grid[2,3] = b2
+grid[3,3] = b3
 
 @async Gtk4.GLib.glib_main()
 Gtk4.GLib.waitforsignal(win,:close_request)
