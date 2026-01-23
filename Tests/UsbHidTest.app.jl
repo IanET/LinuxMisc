@@ -1,3 +1,5 @@
+# sudo /home/pi/.juliaup/bin/julia --project UsbHidTest.app.jl
+
 using HidApi, LibSerialPort
 
 const VENDOR_ID = 0x04d8
@@ -26,8 +28,10 @@ const SRAM_GPIO_CONFIG_INDEX = 8
 
 const ULTRASONIC_START_BYTE = 0xFF
 
+const GP0_ALTER_OUTPUT_VALUE_INDEX = 3
 const GP1_ALTER_OUTPUT_VALUE_INDEX = 7
-# const GP1_OUTPUT_VALUE_INDEX = 8
+const GP2_ALTER_OUTPUT_VALUE_INDEX = 11
+const GP3_ALTER_OUTPUT_VALUE_INDEX = 15
 
 const I2C_SLEEP_TIME = 0.2
 
@@ -46,43 +50,43 @@ function vid_pid(port::String)
     return (vid, pid)
 end
 
-function write_packet(stream, command, data_start_index, data::Vector{UInt8})
+function write_packet(hiddev::HidDevice, command::UInt8, data_start_index::Int, data::Vector{UInt8})
     @assert data_start_index >= 2
     @assert data_start_index + length(data) - 1 <= MCP2221A_PACKET_SIZE
     buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
     buf[COMMAND_CODE_INDEX] = command
-    copy!(buf, data_start_index, data, 1, length(data))
-    write(stream, buf)
+    copyto!(buf, data_start_index, data, 1, length(data))
+    write(hiddev, buf)
 end
 
-write_packet(stream, command, data::Vector{UInt8}) = write_packet(stream, command, DEFAULT_DATA_START_INDEX, data)
-write_packet(stream, command) = write_packet(stream, command, DEFAULT_DATA_START_INDEX, UInt8[])
+write_packet(hiddev::HidDevice, command::UInt8, data::Vector{UInt8}) = write_packet(hiddev, command, DEFAULT_DATA_START_INDEX, data)
+write_packet(hiddev::HidDevice, command::UInt8) = write_packet(hiddev, command, DEFAULT_DATA_START_INDEX, UInt8[])
 
-function reset_chip(stream)
-    write_packet(stream, RESET_CHIP, [0xAB, 0xCD, 0xEF])
+function reset_chip(hiddev)
+    write_packet(hiddev, RESET_CHIP, [0xAB, 0xCD, 0xEF])
     # No response for this command
 end
 
-function enable_gpio(stream)
-    write_packet(stream, SET_SRAM_SETTINGS, SRAM_GPIO_CONFIG_INDEX, [
+function enable_gpio(hiddev)
+    write_packet(hiddev, SET_SRAM_SETTINGS, SRAM_GPIO_CONFIG_INDEX, [
         ENABLE_ALTER_TRUE, 
         SRAM_GP_AS_INPUT, 
         SRAM_GP_AS_OUTPUT, 
         SRAM_GP_AS_OUTPUT, 
         SRAM_GP_AS_OUTPUT])
-    data = read(stream, MCP2221A_PACKET_SIZE)
+    data = read(hiddev, MCP2221A_PACKET_SIZE)
     return data
 end
 
-function get_gpio_values(stream)
-    write_packet(stream, GET_GPIO_VALUES)
-    data = read(stream, MCP2221A_PACKET_SIZE)
+function get_gpio_values(hiddev)
+    write_packet(hiddev, GET_GPIO_VALUES)
+    data = read(hiddev, MCP2221A_PACKET_SIZE)
     return data
 end
 
-function get_sram_settings(stream)
-    write_packet(stream, GET_SRAM_SETTINGS)
-    data = read(stream, MCP2221A_PACKET_SIZE)
+function get_sram_settings(hiddev)
+    write_packet(hiddev, GET_SRAM_SETTINGS)
+    data = read(hiddev, MCP2221A_PACKET_SIZE)
     return data
 end
 
@@ -97,9 +101,9 @@ function find_serial_port(vid::UInt16, pid::UInt16)
     return nothing
 end
 
-function set_gpio_1(stream, gp1::Bool)
-    write_packet(stream, SET_GPIO_VALUES, GP1_ALTER_OUTPUT_VALUE_INDEX, [ENABLE_ALTER_TRUE, gp1 ? 0x01 : 0x00])
-    data = read(stream, MCP2221A_PACKET_SIZE)
+function set_gpio_1(hiddev, gp1::Bool)
+    write_packet(hiddev, SET_GPIO_VALUES, GP1_ALTER_OUTPUT_VALUE_INDEX, [ENABLE_ALTER_TRUE, gp1 ? 0x01 : 0x00])
+    data = read(hiddev, MCP2221A_PACKET_SIZE)
     return data
 end
 
@@ -113,23 +117,23 @@ const I2C_WRITE_COMMAND = 0x90
 const I2C_READ_COMMAND = 0x91
 const I2C_READ_DATA_COMMAND = 0x40
 
-const 1WIRE_RESET_COMMAND = 0xB4
-const 1WIRE_READ_ROM_COMMAND = 0x33
-const 1WIRE_READ_BYTE = 0x96
+const ONEWIRE_RESET_COMMAND = 0xB4
+const ONEWIRE_READ_ROM_COMMAND = 0x33
+const ONEWIRE_READ_BYTE = 0x96
 
-function i2c_request_read(stream, addr, bytes_to_read::UInt16)
-    write_packet(stream, I2C_READ_COMMAND, [
+function i2c_request_read(hiddev, addr, bytes_to_read::UInt16)
+    write_packet(hiddev, I2C_READ_COMMAND, [
         UInt8(bytes_to_read % 256),
         UInt8(bytes_to_read ÷ 256),
         UInt8((addr << 1) | 0x01)])
 end
 
-function i2c_read_data(stream)
-    write_packet(stream, I2C_READ_DATA_COMMAND)
+function i2c_read_data(hiddev)
+    write_packet(hiddev, I2C_READ_DATA_COMMAND)
     sleep(I2C_SLEEP_TIME) # Wait for data to be ready
     # Read the response (64 bytes)
     response = zeros(UInt8, MCP2221A_PACKET_SIZE)
-    read(stream, response)
+    read(hiddev, response)
     @assert response[2] == 0x00 # Status OK
 
     # Byte 2 is the status (0x00 is success)
@@ -142,8 +146,8 @@ end
 
 const I2C_DATA_START_INDEX = 1
 
-function i2c_write_data(stream, addr, i2c_cmd, data::Vector{UInt8})
-    write_packet(stream, I2C_WRITE_COMMAND, I2C_DATA_START_INDEX, [
+function i2c_write_data(hiddev, addr, i2c_cmd, data::Vector{UInt8})
+    write_packet(hiddev, I2C_WRITE_COMMAND, I2C_DATA_START_INDEX, [
         UInt8(length(data) + 1), # Number of bytes to write (data + command)
         0x00, # No special options
         i2c_addr_to_write_address(addr), # 7-bit address + Write bit (0)
@@ -152,36 +156,36 @@ function i2c_write_data(stream, addr, i2c_cmd, data::Vector{UInt8})
     ])
 end
 
-i2c_write_data(stream, addr, i2c_cmd) = i2c_write_data(stream, addr, i2c_cmd, UInt8[])
-ds2484_1wire_reset(stream) = i2c_write_data(stream, DS2484_I2C_ADDRESS, 1WIRE_RESET_COMMAND)
-ds2484_write_byte(stream, byte::UInt8) = i2c_write_data(stream, DS2484_I2C_ADDRESS, DS2484_WRITE_BYTE, [byte])
+i2c_write_data(hiddev, addr, i2c_cmd) = i2c_write_data(hiddev, addr, i2c_cmd, UInt8[])
+ds2484_1wire_reset(hiddev) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_RESET_COMMAND)
+ds2484_write_byte(hiddev, byte::UInt8) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, DS2484_WRITE_BYTE, [byte])
 
-function ds2484_read_byte(stream)
-    i2c_write_data(stream, DS2484_I2C_ADDRESS, 1WIRE_READ_BYTE)
+function ds2484_read_byte(hiddev)
+    i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_READ_BYTE)
     sleep(I2C_SLEEP_TIME)
-    response = i2c_request_and_read(stream, DS2484_I2C_ADDRESS, 1)
+    response = i2c_request_and_read(hiddev, DS2484_I2C_ADDRESS, 1)
     return response[1]
 end
 
-function i2c_request_and_read(stream, addr, bytes_to_read::UInt16)
-    i2c_request_read(stream, addr, bytes_to_read)
+function i2c_request_and_read(hiddev, addr, bytes_to_read::UInt16)
+    i2c_request_read(hiddev, addr, bytes_to_read)
     sleep(I2C_SLEEP_TIME)
-    response = i2c_read_data(stream)
+    response = i2c_read_data(hiddev)
     sleep(I2C_SLEEP_TIME)
     return response
 end
 
-function get_temp_sensor_addr(stream)
-    ds2484_1wire_reset(stream)
+function get_temp_sensor_addr(hiddev)
+    ds2484_1wire_reset(hiddev)
     sleep(I2C_SLEEP_TIME)
-    response = i2c_request_and_read(stream, DS2484_I2C_ADDRESS, 1)
+    response = i2c_request_and_read(hiddev, DS2484_I2C_ADDRESS, 1)
     @info "1-Wire Reset Response: $response"
-    ds2484_write_byte(stream, 1WIRE_READ_ROM_COMMAND)
+    ds2484_write_byte(hiddev, ONEWIRE_READ_ROM_COMMAND)
     sleep(I2C_SLEEP_TIME)
 
     rom_code = zeros(UInt8, 8)
     for i in 1:8
-        byte = ds2484_read_byte(stream)
+        byte = ds2484_read_byte(hiddev)
         @info "1-Wire Read Byte $i: $(hex(byte))"
         rom_code[i] = byte
     end
@@ -196,26 +200,25 @@ HidApi.init()
 @info "HID Devices:"
 devices = enumerate_devices()
 device = find_device(VENDOR_ID, PRODUCT_ID) 
-stream = open(device)
+hiddev = open(device)
 
 @info "Configuring GP0 as input..."
-response = enable_gpio(stream)
+response = enable_gpio(hiddev)
 println("Response: ", response)
 @assert response[STATUS_INDEX] == STATUS_OK
 
 @info "Getting SRAM GPIO settings..."
-response = get_sram_settings(stream)
+response = get_sram_settings(hiddev)
 println("Response: ", response[23:26])
 @assert response[STATUS_INDEX] == STATUS_OK
 
 @info "Getting GPIO values..."
 for _ in 1:10
-    local response = get_gpio_values(stream)
+    local response = get_gpio_values(hiddev)
     println("Response: ", response[3:10])
     @assert response[STATUS_INDEX] == STATUS_OK
     sleep(0.5)
 end
-
 
 # Read ultrasonic sensor over serial port
 
@@ -246,19 +249,19 @@ end
 
 # TODO - Control relays via GPIO outputs
 @info "Relay ON/OFF..."
-response = set_gpio_1(stream, true)
-@info "Response: $(response[3:10])"
+response = set_gpio_1(hiddev, true)
+@info "Response: $(response[3:18])"
 sleep(2)
-response = set_gpio_1(stream, false)
-@info "Response: $(response[3:10])"
+response = set_gpio_1(hiddev, false)
+@info "Response: $(response[3:18])"
 
 # TODO - Read temp over I2C
 @info "Read temperature over I2C..."
 
-rom_code = get_temp_sensor_addr(stream)
-@info "1-Wire ROM Code: $(join(map(x -> hex(x), rom_code), ", "))"
+# rom_code = get_temp_sensor_addr(hiddev)
+# @info "1-Wire ROM Code: $(join(map(x -> hex(x), rom_code), ", "))"
 
 # Cleanup HID
 
-close(stream)
+close(hiddev)
 HidApi.shutdown()
