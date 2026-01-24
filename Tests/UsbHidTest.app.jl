@@ -125,7 +125,9 @@ function i2c_request_read(hiddev, addr, bytes_to_read::UInt16)
     write_packet(hiddev, I2C_READ_COMMAND, [
         UInt8(bytes_to_read % 256),
         UInt8(bytes_to_read ÷ 256),
-        UInt8((addr << 1) | 0x01)])
+        i2c_addr_to_read_address(addr)])
+    response = read(hiddev, MCP2221A_PACKET_SIZE)
+    return response
 end
 
 function i2c_read_data(hiddev)
@@ -135,15 +137,20 @@ function i2c_read_data(hiddev)
     # response = zeros(UInt8, MCP2221A_PACKET_SIZE)
     # read(hiddev, response)
     response = read(hiddev, MCP2221A_PACKET_SIZE)
+    @info "I2C Read Data Response $(response[1:3])"
     @assert response[2] == 0x00 # Status OK
 
     # Byte 2 is the status (0x00 is success)
     # Byte 3 is the internal buffer length
     # Bytes 4 and onwards contain the actual data
 
-    data_end = response[3] + 3
-    @info "Data End" data_end
-    return response[4:end]
+    bytes_in_buffer = response[3]
+    if bytes_in_buffer <= 60
+        return response[4 : 4 + bytes_in_buffer - 1]
+    else
+        @warn "Buffer error - $bytes_in_buffer"
+        return UInt8[]
+    end
 end
 
 const I2C_DATA_START_INDEX = 2
@@ -151,26 +158,36 @@ const I2C_DATA_START_INDEX = 2
 function i2c_write_data(hiddev, addr, i2c_cmd::UInt8, data::Vector{UInt8})
     write_packet(hiddev, I2C_WRITE_COMMAND, I2C_DATA_START_INDEX, [
         UInt8(length(data) + 1),            # Number of bytes to write (data + command)
-        0x00,                               # No special options
+        0x00,                               # Length High Byte
         i2c_addr_to_write_address(addr),    # 7-bit address + Write bit (0)
         i2c_cmd,                            # I2C command
         data...                             # Remaining data
     ])
+    response = read(hiddev, MCP2221A_PACKET_SIZE)
+    return response
 end
 
 i2c_write_data(hiddev, addr, i2c_cmd) = i2c_write_data(hiddev, addr, i2c_cmd, UInt8[])
 ds2484_1wire_reset(hiddev) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_RESET_COMMAND)
 ds2484_write_byte(hiddev, byte::UInt8) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, DS2484_WRITE_BYTE, [byte])
 
-function ds2484_read_byte(hiddev)::UInt8
-    i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_READ_BYTE)
+const Maybe{T} = Union{T, Nothing}
+
+function ds2484_read_byte(hiddev)::Maybe{UInt8}
+    response = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_READ_BYTE)
+    @info "1Wire Read Byte Command Response $(response[1:2])"
     sleep(I2C_SLEEP_TIME)
     response = i2c_request_and_read(hiddev, DS2484_I2C_ADDRESS, 0x0001)
+    if length(response) == 0
+        @warn "No data read from 1-Wire device"
+        return nothing
+    end
     return response[1]
 end
 
 function i2c_request_and_read(hiddev, addr, bytes_to_read::UInt16)
-    i2c_request_read(hiddev, addr, bytes_to_read)
+    response = i2c_request_read(hiddev, addr, bytes_to_read)
+    @info "I2C Request Read Response $(response[1:2])"
     sleep(I2C_SLEEP_TIME)
     response = i2c_read_data(hiddev)
     sleep(I2C_SLEEP_TIME)
@@ -178,18 +195,22 @@ function i2c_request_and_read(hiddev, addr, bytes_to_read::UInt16)
 end
 
 function get_temp_sensor_addr(hiddev)
-    ds2484_1wire_reset(hiddev)
+    response = ds2484_1wire_reset(hiddev)
+    @info "Reset response $(response[1:2])"
     sleep(I2C_SLEEP_TIME)
-    response = i2c_request_and_read(hiddev, DS2484_I2C_ADDRESS, 0x0001)
-    @info "1-Wire Reset Response: $response"
-    ds2484_write_byte(hiddev, ONEWIRE_READ_ROM_COMMAND)
+    # response = i2c_request_and_read(hiddev, DS2484_I2C_ADDRESS, 0x0001)
+    # @info "1-Wire Reset Response: $response"
+    response = ds2484_write_byte(hiddev, ONEWIRE_READ_ROM_COMMAND)
+    @info "Read ROM Command Response $(response[1:2])"
     sleep(I2C_SLEEP_TIME)
 
-    rom_code = zeros(UInt8, 8)
-    for i in 1:8
+    rom_code = UInt8[]
+    while length(rom_code) < 8
         byte = ds2484_read_byte(hiddev)
+        sleep(I2C_SLEEP_TIME)
+        if byte === nothing; continue end
         @info "1-Wire Read Byte $i: $byte"
-        rom_code[i] = byte
+        push!(rom_code, byte)
     end
 
     return rom_code
