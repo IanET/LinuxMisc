@@ -110,8 +110,8 @@ end
 const DS2484_I2C_ADDRESS = 0x18
 const DS2484_WRITE_BYTE = 0xA5
 
-i2c_addr_to_write_address(addr) = (addr << 1) | 0x00
-i2c_addr_to_read_address(addr) = (addr << 1) | 0x01
+i2c_addr_to_write_address(addr)::UInt8 = (addr << 1) | 0x00
+i2c_addr_to_read_address(addr)::UInt8 = (addr << 1) | 0x01
 
 const I2C_WRITE_COMMAND = 0x90
 const I2C_READ_COMMAND = 0x91
@@ -132,8 +132,9 @@ function i2c_read_data(hiddev)
     write_packet(hiddev, I2C_READ_DATA_COMMAND)
     sleep(I2C_SLEEP_TIME) # Wait for data to be ready
     # Read the response (64 bytes)
-    response = zeros(UInt8, MCP2221A_PACKET_SIZE)
-    read(hiddev, response)
+    # response = zeros(UInt8, MCP2221A_PACKET_SIZE)
+    # read(hiddev, response)
+    response = read(hiddev, MCP2221A_PACKET_SIZE)
     @assert response[2] == 0x00 # Status OK
 
     # Byte 2 is the status (0x00 is success)
@@ -141,18 +142,19 @@ function i2c_read_data(hiddev)
     # Bytes 4 and onwards contain the actual data
 
     data_end = response[3] + 3
-    return response[4:data_end]
+    @info "Data End" data_end
+    return response[4:end]
 end
 
-const I2C_DATA_START_INDEX = 1
+const I2C_DATA_START_INDEX = 2
 
-function i2c_write_data(hiddev, addr, i2c_cmd, data::Vector{UInt8})
+function i2c_write_data(hiddev, addr, i2c_cmd::UInt8, data::Vector{UInt8})
     write_packet(hiddev, I2C_WRITE_COMMAND, I2C_DATA_START_INDEX, [
-        UInt8(length(data) + 1), # Number of bytes to write (data + command)
-        0x00, # No special options
-        i2c_addr_to_write_address(addr), # 7-bit address + Write bit (0)
-        i2c_cmd, # I2C command
-        data # Remaining data
+        UInt8(length(data) + 1),            # Number of bytes to write (data + command)
+        0x00,                               # No special options
+        i2c_addr_to_write_address(addr),    # 7-bit address + Write bit (0)
+        i2c_cmd,                            # I2C command
+        data...                             # Remaining data
     ])
 end
 
@@ -160,10 +162,10 @@ i2c_write_data(hiddev, addr, i2c_cmd) = i2c_write_data(hiddev, addr, i2c_cmd, UI
 ds2484_1wire_reset(hiddev) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_RESET_COMMAND)
 ds2484_write_byte(hiddev, byte::UInt8) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, DS2484_WRITE_BYTE, [byte])
 
-function ds2484_read_byte(hiddev)
+function ds2484_read_byte(hiddev)::UInt8
     i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_READ_BYTE)
     sleep(I2C_SLEEP_TIME)
-    response = i2c_request_and_read(hiddev, DS2484_I2C_ADDRESS, 1)
+    response = i2c_request_and_read(hiddev, DS2484_I2C_ADDRESS, 0x0001)
     return response[1]
 end
 
@@ -178,7 +180,7 @@ end
 function get_temp_sensor_addr(hiddev)
     ds2484_1wire_reset(hiddev)
     sleep(I2C_SLEEP_TIME)
-    response = i2c_request_and_read(hiddev, DS2484_I2C_ADDRESS, 1)
+    response = i2c_request_and_read(hiddev, DS2484_I2C_ADDRESS, 0x0001)
     @info "1-Wire Reset Response: $response"
     ds2484_write_byte(hiddev, ONEWIRE_READ_ROM_COMMAND)
     sleep(I2C_SLEEP_TIME)
@@ -186,7 +188,7 @@ function get_temp_sensor_addr(hiddev)
     rom_code = zeros(UInt8, 8)
     for i in 1:8
         byte = ds2484_read_byte(hiddev)
-        @info "1-Wire Read Byte $i: $(hex(byte))"
+        @info "1-Wire Read Byte $i: $byte"
         rom_code[i] = byte
     end
 
@@ -258,10 +260,9 @@ response = set_gpio_1(hiddev, false)
 # TODO - Read temp over I2C
 @info "Read temperature over I2C..."
 
-# rom_code = get_temp_sensor_addr(hiddev)
-# @info "1-Wire ROM Code: $(join(map(x -> hex(x), rom_code), ", "))"
+rom_code = get_temp_sensor_addr(hiddev)
+@info "1-Wire ROM Code" rom_code
 
 # Cleanup HID
-
 close(hiddev)
 HidApi.shutdown()
