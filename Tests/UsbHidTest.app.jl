@@ -33,7 +33,7 @@ const GP1_ALTER_OUTPUT_VALUE_INDEX = 7
 const GP2_ALTER_OUTPUT_VALUE_INDEX = 11
 const GP3_ALTER_OUTPUT_VALUE_INDEX = 15
 
-const I2C_SLEEP_TIME = 0.2
+const I2C_SLEEP_TIME = 0.001
 
 function vid_pid(port::String)
     sp = SerialPort(port)
@@ -113,6 +113,8 @@ const DS2484_WRITE_BYTE = 0xA5
 i2c_addr_to_write_address(addr)::UInt8 = (addr << 1) | 0x00
 i2c_addr_to_read_address(addr)::UInt8 = (addr << 1) | 0x01
 
+const I2C_DATA_START_INDEX = 2
+
 const I2C_WRITE_COMMAND = 0x90
 const I2C_READ_COMMAND = 0x91
 const I2C_READ_DATA_COMMAND = 0x40
@@ -120,6 +122,8 @@ const I2C_READ_DATA_COMMAND = 0x40
 const ONEWIRE_RESET_COMMAND = 0xB4
 const ONEWIRE_READ_ROM_COMMAND = 0x33
 const ONEWIRE_READ_BYTE = 0x96
+const ONEWIRE_SET_READ_POINTER = 0xE1
+const ONEWIRE_READ_DATA_REGISTER = 0xE1
 
 function i2c_request_read(hiddev, addr, bytes_to_read::UInt16)
     write_packet(hiddev, I2C_READ_COMMAND, [
@@ -133,27 +137,19 @@ end
 function i2c_read_data(hiddev)
     write_packet(hiddev, I2C_READ_DATA_COMMAND)
     sleep(I2C_SLEEP_TIME) # Wait for data to be ready
-    # Read the response (64 bytes)
-    # response = zeros(UInt8, MCP2221A_PACKET_SIZE)
-    # read(hiddev, response)
     response = read(hiddev, MCP2221A_PACKET_SIZE)
-    @info "I2C Read Data Response $(response[1:3])"
+    @info "I2C Read Data Response $(response[1:4])"
     @assert response[2] == 0x00 # Status OK
 
-    # Byte 2 is the status (0x00 is success)
-    # Byte 3 is the internal buffer length
-    # Bytes 4 and onwards contain the actual data
-
-    bytes_in_buffer = response[3]
+    bytes_in_buffer = response[4]
     if bytes_in_buffer <= 60
-        return response[4 : 4 + bytes_in_buffer - 1]
+        return response[5 : 5 + bytes_in_buffer - 1]
     else
         @warn "Buffer error - $bytes_in_buffer"
         return UInt8[]
     end
 end
 
-const I2C_DATA_START_INDEX = 2
 
 function i2c_write_data(hiddev, addr, i2c_cmd::UInt8, data::Vector{UInt8})
     write_packet(hiddev, I2C_WRITE_COMMAND, I2C_DATA_START_INDEX, [
@@ -170,12 +166,17 @@ end
 i2c_write_data(hiddev, addr, i2c_cmd) = i2c_write_data(hiddev, addr, i2c_cmd, UInt8[])
 ds2484_1wire_reset(hiddev) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_RESET_COMMAND)
 ds2484_write_byte(hiddev, byte::UInt8) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, DS2484_WRITE_BYTE, [byte])
+ds2484_read_byte(hiddev) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_READ_BYTE)
+ds2484_set_read_pointer(hiddev, pointer::UInt8) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_SET_READ_POINTER, [ONEWIRE_READ_DATA_REGISTER])
 
 const Maybe{T} = Union{T, Nothing}
 
 function ds2484_read_byte(hiddev)::Maybe{UInt8}
     response = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_READ_BYTE)
     @info "1Wire Read Byte Command Response $(response[1:2])"
+    sleep(I2C_SLEEP_TIME)
+    response = ds2484_set_read_pointer(hiddev, ONEWIRE_READ_DATA_REGISTER)
+    @info "Set Read Pointer Response $(response[1:2])"
     sleep(I2C_SLEEP_TIME)
     response = i2c_request_and_read(hiddev, DS2484_I2C_ADDRESS, 0x0001)
     if length(response) == 0
@@ -209,11 +210,36 @@ function get_temp_sensor_addr(hiddev)
         byte = ds2484_read_byte(hiddev)
         sleep(I2C_SLEEP_TIME)
         if byte === nothing; continue end
-        @info "1-Wire Read Byte $i: $byte"
+        @info "1-Wire Read Byte $byte"
         push!(rom_code, byte)
     end
 
     return rom_code
+end
+
+function check_1wire_crc(rom_id::Vector{UInt8})
+    # Ensure we have all 8 bytes
+    if length(rom_id) != 8
+        return false
+    end
+
+    crc = 0x00
+    for i in 1:8
+        byte = rom_id[i]
+        for _ in 1:8
+            # XOR the LSB of the byte with the LSB of the current CRC
+            mix = (crc ^ byte) & 0x01
+            crc >>= 1
+            if mix != 0
+                crc ^= 0x8C  # Apply the polynomial
+            end
+            byte >>= 1
+        end
+    end
+    
+    # If the calculation is correct, the final result of 
+    # running all 8 bytes through should be 0.
+    return crc == 0x00
 end
 
 # Read GPIO inputs via HID
@@ -282,7 +308,10 @@ response = set_gpio_1(hiddev, false)
 @info "Read temperature over I2C..."
 
 rom_code = get_temp_sensor_addr(hiddev)
-@info "1-Wire ROM Code" rom_code
+@info "1-Wire ROM Code $rom_code"
+@assert length(rom_code) == 8
+@assert rom_code[1] == 0x28 # DS18B20 family code
+@assert check_1wire_crc(rom_code)
 
 # Cleanup HID
 close(hiddev)
