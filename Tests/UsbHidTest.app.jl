@@ -173,7 +173,6 @@ const Maybe{T} = Union{T, Nothing}
 function i2c_read_byte_from_ds2484(hiddev)::Maybe{UInt8}
     # response = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_READ_BYTE) |> i2c_sleep
     response = ds2484_read_byte(hiddev) |> i2c_sleep
-
     # @info "1Wire Read Byte Command Response $(response[1:2])"
     response = ds2484_set_read_pointer(hiddev, ONEWIRE_READ_DATA_REGISTER) |> i2c_sleep
     # @info "Set Read Pointer Response $(response[1:2])"
@@ -202,7 +201,7 @@ function get_temp_sensor_addr(hiddev)
     while length(rom_code) < 8
         byte = i2c_read_byte_from_ds2484(hiddev) |> i2c_sleep
         if byte === nothing; continue end
-        @info "1-Wire Read Byte $([byte])"
+        # @info "1-Wire Read Byte $([byte])"
         push!(rom_code, byte)
     end
 
@@ -267,8 +266,11 @@ function read_temperature_without_rom_code(hiddev)::Float32
     # temp_raw = Int16((temp_msb << 8) | temp_lsb)
     # temperature_c = Float32(temp_raw) * 0.0625
 
-    temp_lsb = i2c_read_byte_from_ds2484(hiddev) |> i2c_sleep
-    temp_msb = i2c_read_byte_from_ds2484(hiddev) |> i2c_sleep
+    temp_lsb = i2c_read_byte_from_ds2484(hiddev) |> i2c_sleep |> UInt16
+    # @info "Temp LSB: $([temp_lsb])"
+    temp_msb = i2c_read_byte_from_ds2484(hiddev) |> i2c_sleep |> UInt16 
+    # @info "Temp MSB: $([temp_msb])"
+    ds2484_1wire_reset(hiddev) |> i2c_sleep
     temp_raw = Int16((temp_msb << 8) | temp_lsb)
     temperature_c = Float32(temp_raw) / 16.0
     return temperature_c
@@ -344,9 +346,11 @@ rom_code = get_temp_sensor_addr(hiddev)
 @assert rom_code[1] == 0x28 # DS18B20 family code
 @assert check_1wire_crc(rom_code)
 
+round2(x) = round(x, digits=2)
 for _ in 1:5
-    temperature_c = read_temperature_without_rom_code(hiddev)
-    @info "Temperature: $temperature_c °C"
+    tempc = read_temperature_without_rom_code(hiddev)
+    tempf = (tempc * 9 / 5) + 32 |> round2
+    @info "Temperature: $tempc °C, ($tempf °F)"
     sleep(1)
 end
 
