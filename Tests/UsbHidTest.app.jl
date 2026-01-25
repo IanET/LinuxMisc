@@ -35,6 +35,24 @@ const GP3_ALTER_OUTPUT_VALUE_INDEX = 15
 
 const I2C_SLEEP_TIME = 0.001
 
+const DS2484_I2C_ADDRESS = 0x18
+const DS2484_WRITE_BYTE = 0xA5
+
+const I2C_DATA_START_INDEX = 2
+
+const I2C_WRITE_COMMAND = 0x90
+const I2C_READ_COMMAND = 0x91
+const I2C_READ_DATA_COMMAND = 0x40
+
+const ONEWIRE_RESET_COMMAND = 0xB4
+const ONEWIRE_READ_ROM_COMMAND = 0x33
+const ONEWIRE_READ_BYTE = 0x96
+const ONEWIRE_SET_READ_POINTER = 0xE1
+const ONEWIRE_READ_DATA_REGISTER = 0xE1
+
+i2c_addr_to_write_address(addr)::UInt8 = (addr << 1) | 0x00
+i2c_addr_to_read_address(addr)::UInt8 = (addr << 1) | 0x01
+
 function vid_pid(port::String)
     sp = SerialPort(port)
     vid = pid = 0x0000
@@ -107,24 +125,6 @@ function set_gpio_1(hiddev, gp1::Bool)
     return data
 end
 
-const DS2484_I2C_ADDRESS = 0x18
-const DS2484_WRITE_BYTE = 0xA5
-
-i2c_addr_to_write_address(addr)::UInt8 = (addr << 1) | 0x00
-i2c_addr_to_read_address(addr)::UInt8 = (addr << 1) | 0x01
-
-const I2C_DATA_START_INDEX = 2
-
-const I2C_WRITE_COMMAND = 0x90
-const I2C_READ_COMMAND = 0x91
-const I2C_READ_DATA_COMMAND = 0x40
-
-const ONEWIRE_RESET_COMMAND = 0xB4
-const ONEWIRE_READ_ROM_COMMAND = 0x33
-const ONEWIRE_READ_BYTE = 0x96
-const ONEWIRE_SET_READ_POINTER = 0xE1
-const ONEWIRE_READ_DATA_REGISTER = 0xE1
-
 function i2c_request_read(hiddev, addr, bytes_to_read::UInt16)
     write_packet(hiddev, I2C_READ_COMMAND, [
         UInt8(bytes_to_read % 256),
@@ -149,7 +149,6 @@ function i2c_read_data(hiddev)
     end
 end
 
-
 function i2c_write_data(hiddev, addr, i2c_cmd::UInt8, data::Vector{UInt8})
     write_packet(hiddev, I2C_WRITE_COMMAND, I2C_DATA_START_INDEX, [
         UInt8(length(data) + 1),            # Number of bytes to write (data + command)
@@ -171,7 +170,6 @@ ds2484_set_read_pointer(hiddev, pointer::UInt8) = i2c_write_data(hiddev, DS2484_
 const Maybe{T} = Union{T, Nothing}
 
 function i2c_read_byte_from_ds2484(hiddev)::Maybe{UInt8}
-    # response = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_READ_BYTE) |> i2c_sleep
     response = ds2484_read_byte(hiddev) |> i2c_sleep
     # @info "1Wire Read Byte Command Response $(response[1:2])"
     response = ds2484_set_read_pointer(hiddev, ONEWIRE_READ_DATA_REGISTER) |> i2c_sleep
@@ -253,18 +251,6 @@ function read_temperature_without_rom_code(hiddev)::Float32
     # @info "Skip ROM Command Response $(response[1:2])"
     response = ds2484_write_byte(hiddev, TEMPSENSOR_READ_SCRATCHPAD_COMMAND) |> i2c_sleep
     @info "Read Scratchpad Command Response $(response[1:2])"
-
-    # scratchpad = UInt8[]
-    # while length(scratchpad) < 9
-    #     byte = i2c_read_byte_from_ds2484(hiddev) |> i2c_sleep
-    #     if byte === nothing; continue end
-    #     @info "1-Wire Read Byte $byte"
-    #     push!(scratchpad, byte)
-    # end
-    # temp_lsb = scratchpad[1]
-    # temp_msb = scratchpad[2]
-    # temp_raw = Int16((temp_msb << 8) | temp_lsb)
-    # temperature_c = Float32(temp_raw) * 0.0625
 
     temp_lsb = i2c_read_byte_from_ds2484(hiddev) |> i2c_sleep |> UInt16
     # @info "Temp LSB: $([temp_lsb])"
