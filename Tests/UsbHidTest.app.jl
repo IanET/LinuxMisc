@@ -50,8 +50,13 @@ const ONEWIRE_READ_BYTE = 0x96
 const ONEWIRE_SET_READ_POINTER = 0xE1
 const ONEWIRE_READ_DATA_REGISTER = 0xE1
 
+const Maybe{T} = Union{T, Nothing}
+
 i2c_addr_to_write_address(addr)::UInt8 = (addr << 1) | 0x00
 i2c_addr_to_read_address(addr)::UInt8 = (addr << 1) | 0x01
+
+round2(x) = round(x, digits=2)
+round1(x) = round(x, digits=1)
 
 function vid_pid(port::String)
     sp = SerialPort(port)
@@ -166,8 +171,6 @@ ds2484_1wire_reset(hiddev) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_
 ds2484_write_byte(hiddev, byte::UInt8) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, DS2484_WRITE_BYTE, [byte])
 ds2484_read_byte(hiddev) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_READ_BYTE)
 ds2484_set_read_pointer(hiddev, pointer::UInt8) = i2c_write_data(hiddev, DS2484_I2C_ADDRESS, ONEWIRE_SET_READ_POINTER, [ONEWIRE_READ_DATA_REGISTER])
-
-const Maybe{T} = Union{T, Nothing}
 
 function i2c_read_byte_from_ds2484(hiddev)::Maybe{UInt8}
     response = ds2484_read_byte(hiddev) |> i2c_sleep
@@ -332,10 +335,10 @@ rom_code = get_temp_sensor_addr(hiddev)
 @assert rom_code[1] == 0x28 # DS18B20 family code
 @assert check_1wire_crc(rom_code)
 
-round2(x) = round(x, digits=2)
-for _ in 1:5
+for _ in 1:25
     tempc = read_temperature_without_rom_code(hiddev)
-    tempf = (tempc * 9 / 5) + 32 |> round2
+    tempf = (tempc * 9 / 5) + 32 |> round1
+    tempc = round1(tempc)
     @info "Temperature: $tempc °C, ($tempf °F)"
     sleep(1)
 end
