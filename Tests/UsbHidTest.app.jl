@@ -265,6 +265,40 @@ function read_temperature_without_rom_code(hiddev)::Float32
     return temperature_c
 end
 
+function test_relay(hiddev)
+    for state in (true, false, true, false, true, false)
+        response = set_gpio_1(hiddev, state)
+        @info "Set GPIO1 to $(state ? "HIGH" : "LOW"), Response: $(response[3:18])"
+        sleep(1)
+    end
+end
+
+const ULTRASONIC_SLEEP = 0.001
+
+function get_distance_mm(sp)::Int
+    while true
+        b = read(sp, UInt8)
+        sleep(ULTRASONIC_SLEEP)
+        if b == ULTRASONIC_START_BYTE; break end
+    end
+    packet = read(sp, 3)
+    sleep(ULTRASONIC_SLEEP)            
+    if length(packet) == 3
+        data_high = packet[1]
+        data_low = packet[2]
+        checksum_received = packet[3]
+        calc_sum = (ULTRASONIC_START_BYTE + data_high + data_low) & 0xFF
+        if calc_sum == checksum_received
+            distance = (Int(data_high) << 8) + data_low
+            return distance
+        else
+            @warn "Checksum mismatch!"
+            return -1
+        end
+    end
+    return -1
+end
+
 # Read GPIO inputs via HID
 
 HidApi.init()
@@ -298,35 +332,40 @@ end
 port = find_serial_port(UInt16(VENDOR_ID), UInt16(PRODUCT_ID))
 @info "Found port: $port"
 
+@info "Read depth fast..."
+
 LibSerialPort.open(port, ULTRASONIC_BAUDRATE) do sp    
-    for _ in 1:100
-        if read(sp, UInt8) == ULTRASONIC_START_BYTE
-            packet = read(sp, 3)            
-            if length(packet) == 3
-                data_high = packet[1]
-                data_low = packet[2]
-                checksum_received = packet[3]
-                calc_sum = (ULTRASONIC_START_BYTE + data_high + data_low) & 0xFF
-                if calc_sum == checksum_received
-                    distance = (Int(data_high) << 8) + data_low
-                    println("Distance: $(distance) mm")
-                else
-                    @warn "Checksum mismatch!"
-                end
-            end
+    for i in 200:-1:1
+        cm = get_distance_mm(sp) / 10.0
+        if cm != -1
+            @info "($i) Distance: $cm cm"
+        else
+            @warn "Failed to read distance"
         end
-        sleep(0) 
     end
 end
 
-# TODO - Control relays via GPIO outputs
-@info "Relay ON/OFF..."
-response = set_gpio_1(hiddev, true)
-@info "Response: $(response[3:18])"
-sleep(2)
-response = set_gpio_1(hiddev, false)
-@info "Response: $(response[3:18])"
+@info "Read depth slow..."
 
+# Alternative ultrasonic read loop
+for i in 25:-1:1
+    LibSerialPort.open(port, ULTRASONIC_BAUDRATE) do sp
+        # Read multiple times to stabilize
+        for _ in 1:10
+            get_distance_mm(sp)
+        end
+        cm = get_distance_mm(sp) / 10.0
+        if cm != -1
+            @info "($i) Distance: $cm cm"
+        else
+            @warn "Failed to read distance"
+        end
+    end
+    sleep(1)
+end
+
+@info "Testing relay control via GPIO..."
+test_relay(hiddev)
 
 @info "Reading ROM code..."
 rom_code = get_temp_sensor_addr(hiddev)
@@ -335,11 +374,11 @@ rom_code = get_temp_sensor_addr(hiddev)
 @assert rom_code[1] == 0x28 # DS18B20 family code
 @assert check_1wire_crc(rom_code)
 
-for _ in 1:25
+for i in 10:-1:1
     tempc = read_temperature_without_rom_code(hiddev)
     tempf = (tempc * 9 / 5) + 32 |> round1
     tempc = round1(tempc)
-    @info "Temperature: $tempc °C, ($tempf °F)"
+    @info "($i) Temperature: $tempc °C, ($tempf °F)"
     sleep(1)
 end
 
