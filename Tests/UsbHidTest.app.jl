@@ -299,6 +299,12 @@ function get_distance_mm(sp)::Int
     return -1
 end
 
+function drain_ultrasonic_buffer(sp)
+    while bytesavailable(sp) > 0
+        read(sp, UInt8)
+    end
+end
+
 # Read GPIO inputs via HID
 
 HidApi.init()
@@ -334,11 +340,16 @@ port = find_serial_port(UInt16(VENDOR_ID), UInt16(PRODUCT_ID))
 
 @info "Read depth fast..."
 
-LibSerialPort.open(port, ULTRASONIC_BAUDRATE) do sp    
+LibSerialPort.open(port, ULTRASONIC_BAUDRATE) do sp
+    @info bytesavailable(sp)
+    drain_ultrasonic_buffer(sp)
+    sleep(0.1)
     for i in 200:-1:1
+        start = time()
         cm = get_distance_mm(sp) / 10.0
+        elapsed = time() - start
         if cm != -1
-            @info "($i) Distance: $cm cm"
+            @info "($i) Distance: $cm cm (Elapsed: $(round(elapsed, digits=3))s)"
         else
             @warn "Failed to read distance"
         end
@@ -350,10 +361,8 @@ end
 # Alternative ultrasonic read loop
 for i in 25:-1:1
     LibSerialPort.open(port, ULTRASONIC_BAUDRATE) do sp
-        # Read multiple times to stabilize
-        for _ in 1:10
-            get_distance_mm(sp)
-        end
+        drain_ultrasonic_buffer(sp)
+        sleep(0.1)
         cm = get_distance_mm(sp) / 10.0
         if cm != -1
             @info "($i) Distance: $cm cm"
