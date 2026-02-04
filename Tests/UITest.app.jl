@@ -24,6 +24,9 @@ window.dialog {
     background-color: #502C2C;
     color: white; /* Ensures text is readable on dark background */
 }
+.set-button {
+    background-color: Green;
+}
 """
 
 provider = Gtk4.GtkCssProvider(css)
@@ -62,28 +65,46 @@ function big_button(text)
 end
 
 title = GtkLabel("")
-Gtk4.markup(title, "<span size='32768' weight='bold'>UITest Application</span>")
+Gtk4.markup(title, "<span size='24576' weight='bold'>UITest Application</span>")
 
+b1 = big_button("On")
+b2 = big_button("Off")
+b3 = big_button("Auto")
 l1 = big_label_expanded("80", "°C")
 l2 = big_label_expanded("4.1", "Gal")
 l3 = big_label_expanded("45", "ABV")
-b1 = big_button("Log")
-b2 = big_button("Pause")
-b3 = big_button("Delete")
+b4 = big_button("Log")
+b5 = big_button("Pause")
+b6 = big_button("Delete")
 
-signal_connect(b3, "clicked") do btn
+signal_connect(b6, "clicked") do btn
     ask_dialog("\nAre you sure you want to proceed?\n", win; no_text="No", yes_text="Yes") do x
         @info "User clicked $x"
     end
 end
 
+signal_connect(b1, "clicked") do btn
+    Gtk4.markup(title, "<span size='24576' weight='bold'>On</span>")
+    add_css_class(btn, "set-button")
+    remove_css_class(b2, "set-button")
+end
+
+signal_connect(b2, "clicked") do btn
+    Gtk4.markup(title, "<span size='24576' weight='bold'>Off</span>")
+    add_css_class(btn, "set-button")
+    remove_css_class(b1, "set-button")
+end
+
 Gtk4.G_.attach(grid, title, 0, 0, 3, 1)
-grid[1,2] = l1
-grid[2,2] = l2
-grid[3,2] = l3
-grid[1,3] = b1
-grid[2,3] = b2
-grid[3,3] = b3
+grid[1,2] = b1
+grid[2,2] = b2
+grid[3,2] = b3
+grid[1,3] = l1
+grid[2,3] = l2
+grid[3,3] = l3
+grid[1,4] = b4
+grid[2,4] = b5
+grid[3,4] = b6
 
 @async Gtk4.GLib.glib_main()
 Gtk4.GLib.waitforsignal(win,:close_request)
