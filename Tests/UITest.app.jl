@@ -104,10 +104,22 @@ signal_connect(b3, "clicked") do btn
     remove_css_class(b2, "set-button")
 end
 
-Gtk4.G_.attach(grid, title, 0, 1, 3, 1)
+signal_connect(b4, "clicked") do btn
+    Gtk4.markup(title, "<span size='24576' weight='bold'>Log</span>")
+    add_css_class(btn, "set-button")
+    remove_css_class(b5, "set-button")
+end
+
+signal_connect(b5, "clicked") do btn
+    Gtk4.markup(title, "<span size='24576' weight='bold'>Log</span>")
+    add_css_class(btn, "set-button")
+    remove_css_class(b4, "set-button")
+end
+
 grid[1,1] = b1
 grid[2,1] = b2
 grid[3,1] = b3
+Gtk4.G_.attach(grid, title, 0, 1, 3, 1)
 grid[1,3] = l1
 grid[2,3] = l2
 grid[3,3] = l3
