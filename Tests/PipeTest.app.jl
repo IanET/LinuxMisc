@@ -2,7 +2,10 @@ using Sockets
 
 socket_path = "/dev/shm/pipe_test_service.sock"
 
-@assert length(ARGS) == 1 "Usage: julia PipeTest.app.jl --server|--client"
+if length(ARGS) != 1 || ARGS[1] ∉ ["--server", "--client"]
+    println("Usage: julia PipeTest.app.jl --server|--client")
+    exit(1)
+end
 
 if ARGS[1] == "--client"
     local client = connect(socket_path)
