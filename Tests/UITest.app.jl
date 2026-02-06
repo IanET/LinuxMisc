@@ -1,6 +1,11 @@
 using Gtk4
 
-css = """
+
+const LARGE_FONT = 70*1024
+const MEDIUM_FONT = 20*1024
+const SMALL_FONT = 15*1024
+
+const css = """
 window, .background {
     background-color: #2c3e50;
     color: white;
@@ -10,12 +15,14 @@ label {
     font-size: 32px;
 }
 button {
-    background-color: #333333; /* Dark Gray */
-    background-image: none;    /* REQUIRED: Removes the default gradient */
-    color: white;              /* Text color */
-    border-image: none;        /* Removes theme-specific border styling */
-    border: 1px solid #555;    /* Gives it a visible edge */
-    box-shadow: none;          /* Removes default glow/shadow */
+    background-color: #333333; 
+    background-image: none;   
+    color: white;             
+    border-image: none;        
+    border: 1px solid #555;   
+    box-shadow: none;       
+    margin: 0px;               
+    padding: 0px 0px;           
 }
 button:active {
     background-color: #444444;
@@ -26,6 +33,9 @@ window.dialog {
 }
 .set-button {
     background-color: Green;
+}
+.label-border {
+    border: 0.25px solid white;
 }
 """
 
@@ -39,9 +49,10 @@ grid = GtkGrid()
 grid.column_homogeneous = true
 push!(win,grid)
 
-function big_label_expanded(text, sub)
+function big_label_expanded(text, units, sub="")
     lbl = GtkLabel(text)
-    Gtk4.markup(lbl, "<span size='81920'>$(text)</span>\n<span size='20480'>$(sub)</span>")
+    add_css_class(lbl, "label-border")
+    Gtk4.markup(lbl, "<span size='$LARGE_FONT'>$(text)</span>\n <span size='$MEDIUM_FONT'>$(units)</span>\n\n <span size='$SMALL_FONT'>$(sub)</span>")
     set_gtk_property!(lbl, :justify, Gtk4.Justification_CENTER)
     lbl.hexpand = true
     lbl.vexpand = true
@@ -70,9 +81,9 @@ Gtk4.markup(title, "<span size='24576' weight='bold'>UITest Application</span>")
 b1 = big_button("On")
 b2 = big_button("Off")
 b3 = big_button("Auto")
-l1 = big_label_expanded("80", "°C")
-l2 = big_label_expanded("4.1", "Gal")
-l3 = big_label_expanded("45", "ABV")
+l1 = big_label_expanded("95.5", "°C", "80 ABV")
+l2 = big_label_expanded("4.1", "Gal", "12.1 cm")
+l3 = big_label_expanded("45.0", "ABV", "0.995 SG")
 b4 = big_button("Log")
 b5 = big_button("Pause")
 b6 = big_button("Delete")
