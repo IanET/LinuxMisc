@@ -344,7 +344,7 @@ LibSerialPort.open(port, ULTRASONIC_BAUDRATE) do sp
     @info bytesavailable(sp)
     drain_ultrasonic_buffer(sp)
     sleep(0.1)
-    for i in 200:-1:1
+    for i in 100:-1:1
         start = time()
         cm = get_distance_mm(sp) / 10.0
         elapsed = time() - start
