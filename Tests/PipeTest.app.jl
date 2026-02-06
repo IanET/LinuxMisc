@@ -1,6 +1,6 @@
 using Sockets
 
-socket_path = "/tmp/pipe_test_service.sock"
+socket_path = "/dev/shm/pipe_test_service.sock"
 
 @assert length(ARGS) == 1 "Usage: julia PipeTest.app.jl --server|--client"
 
