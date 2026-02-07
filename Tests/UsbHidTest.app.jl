@@ -74,7 +74,7 @@ function vid_pid(port::String)
 end
 
 function write_packet(hiddev::HidDevice, command::UInt8, data_start_index::Int, data::Vector{UInt8})
-    @assert data_start_index >= 2
+    @assert data_start_index > 1
     @assert data_start_index + length(data) - 1 <= MCP2221A_PACKET_SIZE
     buf = zeros(UInt8, MCP2221A_PACKET_SIZE)
     buf[COMMAND_CODE_INDEX] = command
@@ -325,12 +325,12 @@ println("Response: ", response[23:26])
 @assert response[STATUS_INDEX] == STATUS_OK
 
 @info "Getting GPIO values..."
-for i in 1:50
+for i in 100:-1:1   
     local response = get_gpio_values(hiddev)
     # println("($i) Response: ", response[3:10])
     @info "($i) GP0: $(response[3] & 0x01 == 0x01 ? "HIGH" : "LOW")"
     @assert response[STATUS_INDEX] == STATUS_OK
-    sleep(1)
+    sleep(0.25)
 end
 
 # Read ultrasonic sensor over serial port
