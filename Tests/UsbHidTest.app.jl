@@ -325,11 +325,12 @@ println("Response: ", response[23:26])
 @assert response[STATUS_INDEX] == STATUS_OK
 
 @info "Getting GPIO values..."
-for _ in 1:10
+for i in 1:50
     local response = get_gpio_values(hiddev)
-    println("Response: ", response[3:10])
+    # println("($i) Response: ", response[3:10])
+    @info "($i) GP0: $(response[3] & 0x01 == 0x01 ? "HIGH" : "LOW")"
     @assert response[STATUS_INDEX] == STATUS_OK
-    sleep(0.5)
+    sleep(1)
 end
 
 # Read ultrasonic sensor over serial port
