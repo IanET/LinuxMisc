@@ -1,6 +1,5 @@
 using Gtk4
 
-
 const LARGE_FONT = 70*1024
 const MEDIUM_FONT = 20*1024
 const SMALL_FONT = 15*1024
