@@ -38,16 +38,6 @@ window.dialog {
 }
 """
 
-provider = Gtk4.GtkCssProvider(css)
-win = GtkWindow("UITest", 800, 600)
-display = Gtk4.display(win)
-push!(display, provider, Gtk4.STYLE_PROVIDER_PRIORITY_APPLICATION)
-
-fullscreen(win)
-grid = GtkGrid()
-grid.column_homogeneous = true
-push!(win,grid)
-
 function big_label_expanded(text, units, sub="")
     lbl = GtkLabel(text)
     add_css_class(lbl, "label-border")
@@ -74,68 +64,82 @@ function big_button(text)
     return btn
 end
 
-title = GtkLabel("")
-Gtk4.markup(title, "<span size='24576' weight='bold'>UITest Application</span>")
+app = GtkApplication()
 
-b1 = big_button("On")
-b2 = big_button("Off")
-b3 = big_button("Auto")
-l1 = big_label_expanded("95.5", "°C", "80 ABV")
-l2 = big_label_expanded("4.1", "Gal", "12.1 cm")
-l3 = big_label_expanded("45.0", "ABV", "0.995 SG")
-b4 = big_button("Log")
-b5 = big_button("Pause")
-b6 = big_button("Delete")
+Gtk4.signal_connect(app, :activate) do app
+    provider = Gtk4.GtkCssProvider(css)
+    win = GtkApplicationWindow(app, "UITest")
+    show(win)
+    display = Gtk4.display(win)
+    push!(display, provider, Gtk4.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
-signal_connect(b6, "clicked") do btn
-    ask_dialog("\nAre you sure you want to proceed?\n", win; no_text="No", yes_text="Yes") do x
-        @info "User clicked $x"
+    fullscreen(win)
+    grid = GtkGrid()
+    grid.column_homogeneous = true
+    push!(win,grid)
+
+    title = GtkLabel("")
+    Gtk4.markup(title, "<span size='24576' weight='bold'>UITest Application</span>")
+
+    b1 = big_button("On")
+    b2 = big_button("Off")
+    b3 = big_button("Auto")
+    l1 = big_label_expanded("95.5", "°C", "80 ABV")
+    l2 = big_label_expanded("4.1", "Gal", "12.1 cm")
+    l3 = big_label_expanded("45.0", "ABV", "0.995 SG")
+    b4 = big_button("Log")
+    b5 = big_button("Pause")
+    b6 = big_button("Delete")
+
+    signal_connect(b6, "clicked") do btn
+        ask_dialog("\nAre you sure you want to proceed?\n", win; no_text="No", yes_text="Yes") do x
+            @info "User clicked $x"
+        end
     end
+
+    signal_connect(b1, "clicked") do btn
+        Gtk4.markup(title, "<span size='24576' weight='bold'>On</span>")
+        add_css_class(btn, "set-button")
+        remove_css_class(b2, "set-button")
+        remove_css_class(b3, "set-button")
+    end
+
+    signal_connect(b2, "clicked") do btn
+        Gtk4.markup(title, "<span size='24576' weight='bold'>Off</span>")
+        add_css_class(btn, "set-button")
+        remove_css_class(b1, "set-button")
+        remove_css_class(b3, "set-button")
+    end
+
+    signal_connect(b3, "clicked") do btn
+        Gtk4.markup(title, "<span size='24576' weight='bold'>Auto</span>")
+        add_css_class(btn, "set-button")
+        remove_css_class(b1, "set-button")
+        remove_css_class(b2, "set-button")
+    end
+
+    signal_connect(b4, "clicked") do btn
+        Gtk4.markup(title, "<span size='24576' weight='bold'>Log</span>")
+        add_css_class(btn, "set-button")
+        remove_css_class(b5, "set-button")
+    end
+
+    signal_connect(b5, "clicked") do btn
+        Gtk4.markup(title, "<span size='24576' weight='bold'>Log</span>")
+        add_css_class(btn, "set-button")
+        remove_css_class(b4, "set-button")
+    end
+
+    grid[1,1] = b1
+    grid[2,1] = b2
+    grid[3,1] = b3
+    Gtk4.G_.attach(grid, title, 0, 1, 3, 1)
+    grid[1,3] = l1
+    grid[2,3] = l2
+    grid[3,3] = l3
+    grid[1,4] = b4
+    grid[2,4] = b5
+    grid[3,4] = b6
 end
 
-signal_connect(b1, "clicked") do btn
-    Gtk4.markup(title, "<span size='24576' weight='bold'>On</span>")
-    add_css_class(btn, "set-button")
-    remove_css_class(b2, "set-button")
-    remove_css_class(b3, "set-button")
-end
-
-signal_connect(b2, "clicked") do btn
-    Gtk4.markup(title, "<span size='24576' weight='bold'>Off</span>")
-    add_css_class(btn, "set-button")
-    remove_css_class(b1, "set-button")
-    remove_css_class(b3, "set-button")
-end
-
-signal_connect(b3, "clicked") do btn
-    Gtk4.markup(title, "<span size='24576' weight='bold'>Auto</span>")
-    add_css_class(btn, "set-button")
-    remove_css_class(b1, "set-button")
-    remove_css_class(b2, "set-button")
-end
-
-signal_connect(b4, "clicked") do btn
-    Gtk4.markup(title, "<span size='24576' weight='bold'>Log</span>")
-    add_css_class(btn, "set-button")
-    remove_css_class(b5, "set-button")
-end
-
-signal_connect(b5, "clicked") do btn
-    Gtk4.markup(title, "<span size='24576' weight='bold'>Log</span>")
-    add_css_class(btn, "set-button")
-    remove_css_class(b4, "set-button")
-end
-
-grid[1,1] = b1
-grid[2,1] = b2
-grid[3,1] = b3
-Gtk4.G_.attach(grid, title, 0, 1, 3, 1)
-grid[1,3] = l1
-grid[2,3] = l2
-grid[3,3] = l3
-grid[1,4] = b4
-grid[2,4] = b5
-grid[3,4] = b6
-
-@async Gtk4.GLib.glib_main()
-Gtk4.GLib.waitforsignal(win,:close_request)
+run(app)
