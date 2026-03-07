@@ -96,7 +96,6 @@ g_variant_get_string(v) = @ccall libglib.g_variant_get_string(v::Ptr{Cvoid}, C_N
 g_variant_lookup_value(dict, key) = @ccall libglib.g_variant_lookup_value(dict::Ptr{Cvoid}, key::Ptr{Cchar}, C_NULL::Ptr{Cvoid})::Ptr{Cvoid}
 g_variant_unref(v) = @ccall libglib.g_variant_unref(v::Ptr{Cvoid})::Cvoid
 
-# GDBus Signal Callback
 function on_interface_added(connection, sender_name, object_path, interface_name, signal_name, parameters, user_data)
     parameters == C_NULL && return nothing
 
@@ -111,30 +110,43 @@ function on_interface_added(connection, sender_name, object_path, interface_name
     end
 
     mac_addr = nothing
+    ibeacon = nothing
 
-    # Try preferred source: org.bluez.Device1.Address
     if interfaces_v != C_NULL
         dev1_props_v = g_variant_lookup_value(interfaces_v, "org.bluez.Device1")
 
         if dev1_props_v != C_NULL
+            # Address
             addr_v = g_variant_lookup_value(dev1_props_v, "Address")
-
             if addr_v != C_NULL
                 ap = g_variant_get_string(addr_v)
                 ap != C_NULL && (mac_addr = unsafe_string(ap))
                 g_variant_unref(addr_v)
             end
+
+            # iBeacon from ManufacturerData
+            mfg_v = g_variant_lookup_value(dev1_props_v, "ManufacturerData")
+            if mfg_v != C_NULL
+                ibeacon = extract_ibeacon_from_manufacturer_data(mfg_v)
+                g_variant_unref(mfg_v)
+            end
+
             g_variant_unref(dev1_props_v)
         end
     end
 
-    # Fallback: derive MAC from /dev_XX_XX_...
     if mac_addr === nothing || isempty(mac_addr)
         mac_addr = mac_from_dev_path(dev_path)
     end
 
     println("Device discovered at: ", dev_path)
     println("BLE device address: ", mac_addr === nothing ? "(unknown)" : mac_addr)
+
+    if ibeacon !== nothing
+        println("iBeacon UUID: ", ibeacon.uuid)
+        println("iBeacon Major: ", ibeacon.major)
+        println("iBeacon Minor: ", ibeacon.minor)
+    end
 
     if interfaces_v != C_NULL
         g_variant_unref(interfaces_v)
@@ -143,8 +155,6 @@ function on_interface_added(connection, sender_name, object_path, interface_name
         g_variant_unref(added_path_v)
     end
 
-    # TODO - Find iBeacons, display the GUID, Major, Minor, and Tx Power from the Advertisement Data
-    
     return nothing
 end
 
@@ -164,7 +174,7 @@ function start_bluez_scanner(adapter_path="/org/bluez/hci0")
     callback_ptr = @cfunction(on_interface_added, Cvoid, (Ptr{Cvoid}, Ptr{Cchar}, Ptr{Cchar}, Ptr{Cchar}, Ptr{Cchar}, Ptr{Cvoid}, Ptr{Cvoid}))
     g_dbus_connection_signal_subscribe(bus, "org.bluez", "org.freedesktop.DBus.ObjectManager", "InterfacesAdded", callback_ptr)
     g_dbus_connection_call_sync(bus, "org.bluez", adapter_path, "org.bluez.Adapter1", "StartDiscovery", err)
-    
+
     println("BlueZ discovery started on $adapter_path")
     loop = @ccall libglib.g_main_loop_new(C_NULL::Ptr{Cvoid}, 0::Cint)::Ptr{Cvoid}
     @async @ccall libglib.g_main_loop_run(loop::Ptr{Cvoid})::Cvoid
