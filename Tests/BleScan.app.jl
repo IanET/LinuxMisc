@@ -3,6 +3,21 @@ const libgio = "libgio-2.0.so.0"
 const libglib = "libglib-2.0.so.0"
 
 g_variant_get_fixed_array(v, n, elem_size) = @ccall libglib.g_variant_get_fixed_array(v::Ptr{Cvoid}, n::Ptr{Csize_t}, elem_size::Csize_t)::Ptr{Cvoid}
+g_variant_classify(v) = @ccall libglib.g_variant_classify(v::Ptr{Cvoid})::UInt8
+g_variant_get_variant(v) = @ccall libglib.g_variant_get_variant(v::Ptr{Cvoid})::Ptr{Cvoid}
+g_variant_n_children(v) = @ccall libglib.g_variant_n_children(v::Ptr{Cvoid})::Csize_t
+g_variant_get_child_value(v, index) = @ccall libglib.g_variant_get_child_value(v::Ptr{Cvoid}, index::Csize_t)::Ptr{Cvoid}
+g_variant_get_uint16(v) = @ccall libglib.g_variant_get_uint16(v::Ptr{Cvoid})::UInt16
+g_variant_get_child_value(parameters, index) = @ccall libglib.g_variant_get_child_value(parameters::Ptr{Cvoid}, index::Csize_t)::Ptr{Cvoid}
+g_variant_get_string(v) = @ccall libglib.g_variant_get_string(v::Ptr{Cvoid}, C_NULL::Ptr{Csize_t})::Ptr{Cchar}
+g_variant_lookup_value(dict, key) = @ccall libglib.g_variant_lookup_value(dict::Ptr{Cvoid}, key::Ptr{Cchar}, C_NULL::Ptr{Cvoid})::Ptr{Cvoid}
+g_variant_unref(v) = @ccall libglib.g_variant_unref(v::Ptr{Cvoid})::Cvoid
+g_bus_get_sync(bus_type, cancellable, error) = @ccall libgio.g_bus_get_sync(bus_type::Cint, cancellable::Ptr{Cvoid}, error::Ptr{Ptr{Cvoid}})::Ptr{Cvoid}
+g_dbus_connection_signal_subscribe(connection, sender, interface_name, signal_name, callback) = @ccall libgio.g_dbus_connection_signal_subscribe( connection::Ptr{Cvoid}, sender::Ptr{Cchar}, interface_name::Ptr{Cchar}, signal_name::Ptr{Cchar}, C_NULL::Ptr{Cchar}, C_NULL::Ptr{Cchar}, 0::Cint, callback::Ptr{Cvoid}, C_NULL::Ptr{Cvoid}, C_NULL::Ptr{Cvoid} )::UInt32
+g_dbus_connection_call_sync(connection, bus_name, object_path, interface_name, method_name, parameters, reply_type, flags, timeout, cancellable, error) = @ccall libgio.g_dbus_connection_call_sync( connection::Ptr{Cvoid}, bus_name::Ptr{Cchar}, object_path::Ptr{Cchar}, interface_name::Ptr{Cchar}, method_name::Ptr{Cchar}, parameters::Ptr{Cvoid}, reply_type::Ptr{Cvoid}, flags::Cint, timeout::Cint, cancellable::Ptr{Cvoid}, error::Ptr{Ptr{Cvoid}} )::Ptr{Cvoid}
+g_dbus_connection_call_sync(connection, bus_name, object_path, interface_name, method_name, error) = g_dbus_connection_call_sync( connection, bus_name, object_path, interface_name, method_name, C_NULL, C_NULL, 0, -1, C_NULL, error )
+g_main_loop_new() = @ccall libglib.g_main_loop_new(C_NULL::Ptr{Cvoid}, 0::Cint)::Ptr{Cvoid}
+g_main_loop_run(loop) = @ccall libglib.g_main_loop_run(loop::Ptr{Cvoid})::Cvoid
 
 function variant_bytes(v::Ptr{Cvoid})
     n = Ref{Csize_t}(0)
@@ -36,12 +51,6 @@ function parse_ibeacon_payload(payload::Vector{UInt8})
     minor = (UInt16(payload[21]) << 8) | UInt16(payload[22])
     return (uuid=uuid, major=major, minor=minor)
 end
-
-g_variant_classify(v) = @ccall libglib.g_variant_classify(v::Ptr{Cvoid})::UInt8
-g_variant_get_variant(v) = @ccall libglib.g_variant_get_variant(v::Ptr{Cvoid})::Ptr{Cvoid}
-g_variant_n_children(v) = @ccall libglib.g_variant_n_children(v::Ptr{Cvoid})::Csize_t
-g_variant_get_child_value(v, index) = @ccall libglib.g_variant_get_child_value(v::Ptr{Cvoid}, index::Csize_t)::Ptr{Cvoid}
-g_variant_get_uint16(v) = @ccall libglib.g_variant_get_uint16(v::Ptr{Cvoid})::UInt16
 
 function extract_ibeacon_from_manufacturer_data(mfg_v::Ptr{Cvoid})
     mfg_v == C_NULL && return nothing
@@ -97,11 +106,6 @@ function mac_from_dev_path(path::AbstractString)
     occursin(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$", mac) ? mac : nothing
 end
 
-g_variant_get_child_value(parameters, index) = @ccall libglib.g_variant_get_child_value(parameters::Ptr{Cvoid}, index::Csize_t)::Ptr{Cvoid}
-g_variant_get_string(v) = @ccall libglib.g_variant_get_string(v::Ptr{Cvoid}, C_NULL::Ptr{Csize_t})::Ptr{Cchar}
-g_variant_lookup_value(dict, key) = @ccall libglib.g_variant_lookup_value(dict::Ptr{Cvoid}, key::Ptr{Cchar}, C_NULL::Ptr{Cvoid})::Ptr{Cvoid}
-g_variant_unref(v) = @ccall libglib.g_variant_unref(v::Ptr{Cvoid})::Cvoid
-
 function on_interface_added(connection, sender_name, object_path, interface_name, signal_name, parameters, user_data)
     parameters == C_NULL && return nothing
 
@@ -143,13 +147,11 @@ function on_interface_added(connection, sender_name, object_path, interface_name
         mac_addr = mac_from_dev_path(dev_path)
     end
 
-    println("Device discovered at: ", dev_path)
-    println("BLE device address: ", mac_addr === nothing ? "(unknown)" : mac_addr)
+    # @info "Device discovered at: $dev_path"
+    @info "BLE device address: $mac_addr"
 
     if ibeacon !== nothing
-        println("iBeacon UUID: ", ibeacon.uuid)
-        println("iBeacon Major: ", ibeacon.major)
-        println("iBeacon Minor: ", ibeacon.minor)
+        @info "iBeacon $(ibeacon.uuid)" ibeacon.major ibeacon.minor
     end
 
     if interfaces_v != C_NULL
@@ -161,13 +163,6 @@ function on_interface_added(connection, sender_name, object_path, interface_name
 
     return nothing
 end
-
-g_bus_get_sync(bus_type, cancellable, error) = @ccall libgio.g_bus_get_sync(bus_type::Cint, cancellable::Ptr{Cvoid}, error::Ptr{Ptr{Cvoid}})::Ptr{Cvoid}
-g_dbus_connection_signal_subscribe(connection, sender, interface_name, signal_name, callback) = @ccall libgio.g_dbus_connection_signal_subscribe( connection::Ptr{Cvoid}, sender::Ptr{Cchar}, interface_name::Ptr{Cchar}, signal_name::Ptr{Cchar}, C_NULL::Ptr{Cchar}, C_NULL::Ptr{Cchar}, 0::Cint, callback::Ptr{Cvoid}, C_NULL::Ptr{Cvoid}, C_NULL::Ptr{Cvoid} )::UInt32
-g_dbus_connection_call_sync(connection, bus_name, object_path, interface_name, method_name, parameters, reply_type, flags, timeout, cancellable, error) = @ccall libgio.g_dbus_connection_call_sync( connection::Ptr{Cvoid}, bus_name::Ptr{Cchar}, object_path::Ptr{Cchar}, interface_name::Ptr{Cchar}, method_name::Ptr{Cchar}, parameters::Ptr{Cvoid}, reply_type::Ptr{Cvoid}, flags::Cint, timeout::Cint, cancellable::Ptr{Cvoid}, error::Ptr{Ptr{Cvoid}} )::Ptr{Cvoid}
-g_dbus_connection_call_sync(connection, bus_name, object_path, interface_name, method_name, error) = g_dbus_connection_call_sync( connection, bus_name, object_path, interface_name, method_name, C_NULL, C_NULL, 0, -1, C_NULL, error )
-g_main_loop_new() = @ccall libglib.g_main_loop_new(C_NULL::Ptr{Cvoid}, 0::Cint)::Ptr{Cvoid}
-g_main_loop_run(loop) = @ccall libglib.g_main_loop_run(loop::Ptr{Cvoid})::Cvoid
 
 function start_bluez_scanner(adapter_path="/org/bluez/hci0")
     err = Ref{Ptr{Cvoid}}(C_NULL)
