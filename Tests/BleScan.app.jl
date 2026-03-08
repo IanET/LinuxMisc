@@ -41,6 +41,7 @@ g_variant_classify(v) = @ccall libglib.g_variant_classify(v::Ptr{Cvoid})::UInt8
 g_variant_get_variant(v) = @ccall libglib.g_variant_get_variant(v::Ptr{Cvoid})::Ptr{Cvoid}
 g_variant_n_children(v) = @ccall libglib.g_variant_n_children(v::Ptr{Cvoid})::Csize_t
 g_variant_get_child_value(v, index) = @ccall libglib.g_variant_get_child_value(v::Ptr{Cvoid}, index::Csize_t)::Ptr{Cvoid}
+g_variant_get_uint16(v) = @ccall libglib.g_variant_get_uint16(v::Ptr{Cvoid})::UInt16
 
 function extract_ibeacon_from_manufacturer_data(mfg_v::Ptr{Cvoid})
     mfg_v == C_NULL && return nothing
@@ -63,7 +64,7 @@ function extract_ibeacon_from_manufacturer_data(mfg_v::Ptr{Cvoid})
         cid_v = g_variant_get_child_value(entry_v, 0)
         val_v = g_variant_get_child_value(entry_v, 1)
 
-        cid = cid_v == C_NULL ? UInt16(0) : @ccall libglib.g_variant_get_uint16(cid_v::Ptr{Cvoid})::UInt16
+        cid = cid_v == C_NULL ? UInt16(0) : g_variant_get_uint16(cid_v)
 
         if cid == 0x004c && val_v != C_NULL
             # val_v is variant(ay)
@@ -80,12 +81,12 @@ function extract_ibeacon_from_manufacturer_data(mfg_v::Ptr{Cvoid})
             return ibeacon
         end
 
-        cid_v != C_NULL && @ccall libglib.g_variant_unref(cid_v::Ptr{Cvoid})::Cvoid
-        val_v != C_NULL && @ccall libglib.g_variant_unref(val_v::Ptr{Cvoid})::Cvoid
-        @ccall libglib.g_variant_unref(entry_v::Ptr{Cvoid})::Cvoid
+        cid_v != C_NULL && g_variant_unref(cid_v)
+        val_v != C_NULL && g_variant_unref(val_v)
+        g_variant_unref(entry_v)
     end
 
-    boxed && @ccall libglib.g_variant_unref(dict_v::Ptr{Cvoid})::Cvoid
+    boxed && g_variant_unref(dict_v)
     return nothing
 end
 
