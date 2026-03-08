@@ -8,6 +8,7 @@ const HCI_DEV_NONE = 0xffff
 
 const MGMT_OP_START_DISCOVERY = 0x0023
 const MGMT_EV_DEVICE_FOUND = 0x0012
+const MGMT_EV_DISCOVERING = 0x0013
 
 # Structs to match C memory layout
 struct MgmtHdr
@@ -32,30 +33,42 @@ function scan_ibeacons()
         error("Bind failed. I/O error or busy.")
     end
 
+    io = fdio(sock_fd)
+
     # 3. Start Discovery (Send Command)
     # Header (6 bytes) + Type (1 byte: 7 = LE + BR/EDR)
-    cmd = [0x23, 0x00, 0x00, 0x00, 0x01, 0x00, 0x07] # Little endian opcode 0x0023, index 0, len 1
-    @ccall write(sock_fd::Cint, cmd::Ptr{UInt8}, 7::Csize_t)::Cssize_t
+
+    cmd = [MGMT_OP_START_DISCOVERY, 0x00, 0x00, 0x00, 0x01, 0x00, 0x07] # Little endian opcode 0x0023, index 0, len 1
+    # @ccall write(sock_fd::Cint, cmd::Ptr{UInt8}, 7::Csize_t)::Cssize_t
+    write(io, cmd)
 
     println("Scanning for iBeacons using Julia mgmt API...")
 
-    buffer = Vector{UInt8}(undef, 1024)
+    # buffer = Vector{UInt8}(undef, 1024)
     
     try
         while true
-            len = @ccall read(sock_fd::Cint, buffer::Ptr{UInt8}, 1024::Csize_t)::Cssize_t
+            # @info "Waiting for events..."
+            # len = @ccall read(sock_fd::Cint, buffer::Ptr{UInt8}, 1024::Csize_t)::Cssize_t
+
+            buffer = read(io)
+            len = length(buffer)
+            
+            # @info "Received event of length $len bytes."
             if len < 6; continue; end
 
             # Parse Header
             opcode = UInt16(buffer[2]) << 8 | buffer[1]
+            index = UInt16(buffer[4]) << 8 | buffer[3]
             payload_len = UInt16(buffer[6]) << 8 | buffer[5]
+
+            @info "Event Opcode: $opcode | Index: $index | Payload Length: $payload_len bytes"
 
             if opcode == MGMT_EV_DEVICE_FOUND
                 # iBeacon prefix check: Apple (4C 00), Type (02), Length (15)
                 # Data starts after header (6) and fixed event fields (~14 bytes)
                 for i in 20:(len - 4)
-                    if buffer[i] == 0x4c && buffer[i+1] == 0x00 && 
-                       buffer[i+2] == 0x02 && buffer[i+3] == 0x15
+                    if buffer[i] == 0x4c && buffer[i+1] == 0x00 && buffer[i+2] == 0x02 && buffer[i+3] == 0x15
                         
                         # Major/Minor are Big Endian in the packet
                         major = Int(buffer[i+20]) << 8 | buffer[i+21]
@@ -67,11 +80,31 @@ function scan_ibeacons()
                         println("[FOUND] $mac | Major: $major | Minor: $minor")
                     end
                 end
+            elseif opcode == MGMT_OP_START_DISCOVERY
+                @info "Discovery started successfully."
+            elseif opcode == MGMT_EV_DISCOVERING
+                # @info "Device disconnected." buffer[7:7+payload_len-1] 
+                if buffer[7] == 0x07 && buffer[8] == 0x01
+                    @info "Starting"
+                elseif buffer[7] == 0x07 && buffer[8] == 0x00
+                    @info "Stopping"
+                    close(io)
+                    return
+                end
+                # @ccall close(sock_fd::Cint)::Cint
+                # close(io)
+                # return
             end
+            sleep(0.1) # Avoid busy loop
         end
     finally
         @ccall close(sock_fd::Cint)::Cint
     end
 end
 
-scan_ibeacons()
+@main function main(args)
+    while true
+        scan_ibeacons()
+        sleep(5) # Wait before retrying if something goes wrong
+    end
+end
