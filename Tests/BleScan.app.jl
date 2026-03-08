@@ -122,7 +122,6 @@ function on_interface_added(connection, sender_name, object_path, interface_name
         dev1_props_v = g_variant_lookup_value(interfaces_v, "org.bluez.Device1")
 
         if dev1_props_v != C_NULL
-            # Address
             addr_v = g_variant_lookup_value(dev1_props_v, "Address")
             if addr_v != C_NULL
                 ap = g_variant_get_string(addr_v)
@@ -130,7 +129,6 @@ function on_interface_added(connection, sender_name, object_path, interface_name
                 g_variant_unref(addr_v)
             end
 
-            # iBeacon from ManufacturerData
             mfg_v = g_variant_lookup_value(dev1_props_v, "ManufacturerData")
             if mfg_v != C_NULL
                 ibeacon = extract_ibeacon_from_manufacturer_data(mfg_v)
@@ -168,27 +166,21 @@ g_bus_get_sync(bus_type, cancellable, error) = @ccall libgio.g_bus_get_sync(bus_
 g_dbus_connection_signal_subscribe(connection, sender, interface_name, signal_name, callback) = @ccall libgio.g_dbus_connection_signal_subscribe( connection::Ptr{Cvoid}, sender::Ptr{Cchar}, interface_name::Ptr{Cchar}, signal_name::Ptr{Cchar}, C_NULL::Ptr{Cchar}, C_NULL::Ptr{Cchar}, 0::Cint, callback::Ptr{Cvoid}, C_NULL::Ptr{Cvoid}, C_NULL::Ptr{Cvoid} )::UInt32
 g_dbus_connection_call_sync(connection, bus_name, object_path, interface_name, method_name, parameters, reply_type, flags, timeout, cancellable, error) = @ccall libgio.g_dbus_connection_call_sync( connection::Ptr{Cvoid}, bus_name::Ptr{Cchar}, object_path::Ptr{Cchar}, interface_name::Ptr{Cchar}, method_name::Ptr{Cchar}, parameters::Ptr{Cvoid}, reply_type::Ptr{Cvoid}, flags::Cint, timeout::Cint, cancellable::Ptr{Cvoid}, error::Ptr{Ptr{Cvoid}} )::Ptr{Cvoid}
 g_dbus_connection_call_sync(connection, bus_name, object_path, interface_name, method_name, error) = g_dbus_connection_call_sync( connection, bus_name, object_path, interface_name, method_name, C_NULL, C_NULL, 0, -1, C_NULL, error )
+g_main_loop_new() = @ccall libglib.g_main_loop_new(C_NULL::Ptr{Cvoid}, 0::Cint)::Ptr{Cvoid}
+g_main_loop_run(loop) = @ccall libglib.g_main_loop_run(loop::Ptr{Cvoid})::Cvoid
 
 function start_bluez_scanner(adapter_path="/org/bluez/hci0")
     err = Ref{Ptr{Cvoid}}(C_NULL)
     bus = g_bus_get_sync(1, C_NULL, err)
-    
-    if bus == C_NULL
-        error("Failed to connect to System Bus")
-    end
+    @assert bus != C_NULL "Failed to connect to System Bus: $(err[])"
 
     callback_ptr = @cfunction(on_interface_added, Cvoid, (Ptr{Cvoid}, Ptr{Cchar}, Ptr{Cchar}, Ptr{Cchar}, Ptr{Cchar}, Ptr{Cvoid}, Ptr{Cvoid}))
     g_dbus_connection_signal_subscribe(bus, "org.bluez", "org.freedesktop.DBus.ObjectManager", "InterfacesAdded", callback_ptr)
     g_dbus_connection_call_sync(bus, "org.bluez", adapter_path, "org.bluez.Adapter1", "StartDiscovery", err)
 
-    println("BlueZ discovery started on $adapter_path")
-    loop = @ccall libglib.g_main_loop_new(C_NULL::Ptr{Cvoid}, 0::Cint)::Ptr{Cvoid}
-    @async @ccall libglib.g_main_loop_run(loop::Ptr{Cvoid})::Cvoid
-    
-    return loop
+    @info "BlueZ discovery started on $adapter_path"
+    @async g_main_loop_new() |> g_main_loop_run
 end
 
-# Run the scanner
-scanner_loop = start_bluez_scanner()
-
+start_bluez_scanner()
 wait() 
