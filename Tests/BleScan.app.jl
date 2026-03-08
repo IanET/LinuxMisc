@@ -2,24 +2,24 @@
 const libgio = "libgio-2.0.so.0"
 const libglib = "libglib-2.0.so.0"
 
-function _variant_bytes(v::Ptr{Cvoid})
+g_variant_get_fixed_array(v, n, elem_size) = @ccall libglib.g_variant_get_fixed_array(v::Ptr{Cvoid}, n::Ptr{Csize_t}, elem_size::Csize_t)::Ptr{Cvoid}
+
+function variant_bytes(v::Ptr{Cvoid})
     n = Ref{Csize_t}(0)
-    p = @ccall libglib.g_variant_get_fixed_array(
-        v::Ptr{Cvoid}, n::Ptr{Csize_t}, 1::Csize_t
-    )::Ptr{UInt8}
+    p = g_variant_get_fixed_array(v, n, 1) |> Ptr{UInt8}
     (p == C_NULL || n[] == 0) && return UInt8[]
     return copy(unsafe_wrap(Vector{UInt8}, p, Int(n[]); own=false))
 end
 
-_hex2(b::UInt8) = uppercase(string(b, base=16, pad=2))
+hex2(b::UInt8) = uppercase(string(b, base=16, pad=2))
 
-function _uuid_from_16(bytes16::Vector{UInt8})
+function uuid_from_16(bytes16::Vector{UInt8})
     length(bytes16) == 16 || return nothing
-    p1 = join(_hex2.(bytes16[1:4]))
-    p2 = join(_hex2.(bytes16[5:6]))
-    p3 = join(_hex2.(bytes16[7:8]))
-    p4 = join(_hex2.(bytes16[9:10]))
-    p5 = join(_hex2.(bytes16[11:16]))
+    p1 = join(hex2.(bytes16[1:4]))
+    p2 = join(hex2.(bytes16[5:6]))
+    p3 = join(hex2.(bytes16[7:8]))
+    p4 = join(hex2.(bytes16[9:10]))
+    p5 = join(hex2.(bytes16[11:16]))
     return "$p1-$p2-$p3-$p4-$p5"
 end
 
@@ -29,7 +29,7 @@ function parse_ibeacon_payload(payload::Vector{UInt8})
     length(payload) >= 23 || return nothing
     payload[1] == 0x02 && payload[2] == 0x15 || return nothing
 
-    uuid = _uuid_from_16(payload[3:18])
+    uuid = uuid_from_16(payload[3:18])
     uuid === nothing && return nothing
 
     major = (UInt16(payload[19]) << 8) | UInt16(payload[20])
@@ -37,40 +37,45 @@ function parse_ibeacon_payload(payload::Vector{UInt8})
     return (uuid=uuid, major=major, minor=minor)
 end
 
+g_variant_classify(v) = @ccall libglib.g_variant_classify(v::Ptr{Cvoid})::UInt8
+g_variant_get_variant(v) = @ccall libglib.g_variant_get_variant(v::Ptr{Cvoid})::Ptr{Cvoid}
+g_variant_n_children(v) = @ccall libglib.g_variant_n_children(v::Ptr{Cvoid})::Csize_t
+g_variant_get_child_value(v, index) = @ccall libglib.g_variant_get_child_value(v::Ptr{Cvoid}, index::Csize_t)::Ptr{Cvoid}
+
 function extract_ibeacon_from_manufacturer_data(mfg_v::Ptr{Cvoid})
     mfg_v == C_NULL && return nothing
 
     # Handle both direct a{qv} and boxed variant(v)
-    cls = @ccall libglib.g_variant_classify(mfg_v::Ptr{Cvoid})::UInt8
+    cls = g_variant_classify(mfg_v)
     dict_v = mfg_v
     boxed = false
     if cls == UInt8('v')
-        dict_v = @ccall libglib.g_variant_get_variant(mfg_v::Ptr{Cvoid})::Ptr{Cvoid}
+        dict_v = g_variant_get_variant(mfg_v)
         boxed = true
     end
     dict_v == C_NULL && return nothing
 
-    n = @ccall libglib.g_variant_n_children(dict_v::Ptr{Cvoid})::Csize_t
+    n = g_variant_n_children(dict_v)
     for i in 0:(n - 1)
-        entry_v = @ccall libglib.g_variant_get_child_value(dict_v::Ptr{Cvoid}, i::Csize_t)::Ptr{Cvoid}
+        entry_v = g_variant_get_child_value(dict_v, i)
         entry_v == C_NULL && continue
 
-        cid_v = @ccall libglib.g_variant_get_child_value(entry_v::Ptr{Cvoid}, 0::Csize_t)::Ptr{Cvoid}
-        val_v = @ccall libglib.g_variant_get_child_value(entry_v::Ptr{Cvoid}, 1::Csize_t)::Ptr{Cvoid}
+        cid_v = g_variant_get_child_value(entry_v, 0)
+        val_v = g_variant_get_child_value(entry_v, 1)
 
         cid = cid_v == C_NULL ? UInt16(0) : @ccall libglib.g_variant_get_uint16(cid_v::Ptr{Cvoid})::UInt16
 
         if cid == 0x004c && val_v != C_NULL
             # val_v is variant(ay)
-            payload_v = @ccall libglib.g_variant_get_variant(val_v::Ptr{Cvoid})::Ptr{Cvoid}
-            payload = payload_v == C_NULL ? UInt8[] : _variant_bytes(payload_v)
+            payload_v = g_variant_get_variant(val_v)
+            payload = payload_v == C_NULL ? UInt8[] : variant_bytes(payload_v)
             ibeacon = parse_ibeacon_payload(payload)
 
-            payload_v != C_NULL && @ccall libglib.g_variant_unref(payload_v::Ptr{Cvoid})::Cvoid
-            cid_v != C_NULL && @ccall libglib.g_variant_unref(cid_v::Ptr{Cvoid})::Cvoid
-            val_v != C_NULL && @ccall libglib.g_variant_unref(val_v::Ptr{Cvoid})::Cvoid
-            @ccall libglib.g_variant_unref(entry_v::Ptr{Cvoid})::Cvoid
-            boxed && @ccall libglib.g_variant_unref(dict_v::Ptr{Cvoid})::Cvoid
+            payload_v != C_NULL && g_variant_unref(payload_v)
+            cid_v != C_NULL && g_variant_unref(cid_v)
+            val_v != C_NULL && g_variant_unref(val_v)
+            g_variant_unref(entry_v)
+            boxed && g_variant_unref(dict_v)
 
             return ibeacon
         end
