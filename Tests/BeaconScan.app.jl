@@ -2,15 +2,19 @@ using Sockets
 
 @info "Scanning for iBeacons using Julia mgmt API..." 
 
-# Constants for the Management API
+# Requires root 
+
 const AF_BLUETOOTH = 31
 const BTPROTO_HCI = 1
 const HCI_CHANNEL_CONTROL = 3
 const HCI_DEV_NONE = 0xffff
 
-const MGMT_OP_START_DISCOVERY = 0x0023
+const MGMT_EV_CMD_STATUS  = 0x0002
 const MGMT_EV_DEVICE_FOUND = 0x0012
 const MGMT_EV_DISCOVERING = 0x0013
+
+const MGMT_OP_START_DISCOVERY = 0x0023
+const MGMT_OP_STOP_DISCOVERY = 0x0024
 
 function scan_ibeacons()
     # 1. Open the Management Socket
@@ -37,13 +41,13 @@ function scan_ibeacons()
             if len < 6; continue; end
 
             # Parse Header
-            opcode = UInt16(buffer[2]) << 8 | buffer[1]
+            event = UInt16(buffer[2]) << 8 | buffer[1]
             index = UInt16(buffer[4]) << 8 | buffer[3]
             payload_len = UInt16(buffer[6]) << 8 | buffer[5]
 
             # @info "Event Opcode: $opcode | Index: $index | Payload Length: $payload_len bytes"
 
-            if opcode == MGMT_EV_DEVICE_FOUND
+            if event == MGMT_EV_DEVICE_FOUND
                 # iBeacon prefix check: Apple (4C 00), Type (02), Length (15)
                 # Data starts after header (6) and fixed event fields (~14 bytes)
                 for i in 20:(len - 4)
@@ -56,14 +60,19 @@ function scan_ibeacons()
                         println("[FOUND] $mac | Major: $major | Minor: $minor")
                     end
                 end
-            elseif opcode == MGMT_EV_DISCOVERING
-                if buffer[7] == 0x07 && buffer[8] == 0x01
+            elseif event == MGMT_EV_DISCOVERING
+                opcode = UInt16(buffer[8]) << 8 | buffer[7]
+                if opcode == MGMT_OP_START_DISCOVERY
                     @info "Starting"
-                elseif buffer[7] == 0x07 && buffer[8] == 0x00
+                elseif opcode == MGMT_OP_STOP_DISCOVERY
                     @info "Stopping"
                     close(io)
                     return
                 end
+            elseif event == MGMT_EV_CMD_STATUS
+                opcode = UInt16(buffer[8]) << 8 | buffer[7]
+                status = buffer[9]
+                @info "Command Status | Opcode: $opcode | Status: $status"
             end
             sleep(0.1) # Avoid busy loop
         end
