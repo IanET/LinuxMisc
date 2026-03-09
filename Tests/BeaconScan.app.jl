@@ -36,7 +36,8 @@ function parse_manufacturer_data(data::Vector{UInt8})
         major = UInt16(data[21]) << 8 | UInt16(data[22])
         minor = UInt16(data[23]) << 8 | UInt16(data[24])
         tx_power = UInt8(data[25])
-        @info "iBeacon Detected | UUID: $uuid | Major: $major | Minor: $minor | Tx Power: $tx_power dBm"
+        # @info "iBeacon Detected | UUID: $uuid | Major: $major | Minor: $minor | Tx Power: $tx_power dBm"
+        @info "iBeacon" uuid reinterpret(Int16, major) reinterpret(Int16, minor) tx_power
     else 
         @info "Unknown Manufacturer Data | Company ID: $(hex(company_id)) | Data: $(hex(data[3:end]))"
     end
@@ -44,7 +45,7 @@ end
 
 function parse_payload(payload::Vector{UInt8})
     address = join(string.(reverse(payload[1:6]), base=16, pad=2), ":")
-    @info "Device Found | Address: $address"
+    @info "Device: $address"
     # @info "Payload: $(hex(payload[15:end]))"
     i = 15
     while i <= length(payload)
