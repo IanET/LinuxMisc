@@ -1,5 +1,7 @@
 using Sockets
 
+@info "Scanning for iBeacons using Julia mgmt API..." 
+
 # Constants for the Management API
 const AF_BLUETOOTH = 31
 const BTPROTO_HCI = 1
@@ -28,7 +30,6 @@ function scan_ibeacons()
     cmd = [0x23, 0x00, 0x00, 0x00, 0x01, 0x00, 0x07] # Little endian opcode 0x0023, index 0, len 1
     write(io, cmd)
 
-    println("Scanning for iBeacons using Julia mgmt API...")    
     try
         while true
             buffer = read(io)
@@ -40,7 +41,7 @@ function scan_ibeacons()
             index = UInt16(buffer[4]) << 8 | buffer[3]
             payload_len = UInt16(buffer[6]) << 8 | buffer[5]
 
-            @info "Event Opcode: $opcode | Index: $index | Payload Length: $payload_len bytes"
+            # @info "Event Opcode: $opcode | Index: $index | Payload Length: $payload_len bytes"
 
             if opcode == MGMT_EV_DEVICE_FOUND
                 # iBeacon prefix check: Apple (4C 00), Type (02), Length (15)
