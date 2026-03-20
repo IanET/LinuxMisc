@@ -64,9 +64,7 @@ function big_button(text)
     return btn
 end
 
-app = GtkApplication()
-
-Gtk4.signal_connect(app, :activate) do app
+function on_activate(app)
     provider = Gtk4.GtkCssProvider(css)
     win = GtkApplicationWindow(app, "UITest")
     show(win)
@@ -142,4 +140,6 @@ Gtk4.signal_connect(app, :activate) do app
     grid[3,4] = b6
 end
 
+app = GtkApplication()
+Gtk4.signal_connect(on_activate, app, :activate)
 run(app)
